@@ -23,3 +23,17 @@ godot --path godot
 ```
 
 Android APK will be published as a GitHub Actions artifact **only when a build succeeds**; see Actions. This project contains no ads, payment integrations or third-party game assets.
+
+## Verified Android prototype build
+
+First successful Godot 4.4.1 CI run: [#44621505624](https://github.com/legioner666/Game/actions/runs/44621505624).
+
+- Godot project import: PASS.
+- 29 pure economy tests: PASS.
+- Headless startup: PASS.
+- ARM64 debug APK export, APK verification/signature and artifact upload: PASS.
+- Device installation, multi-touch, graphics, FPS and crashes: **not yet tested**.
+
+[Download the Android debug build artifact (ZIP)](https://github.com/legioner666/Game/actions/runs/44621505624/artifacts/14577755406). Extract `parasite-evolution-debug.apk` from ZIP and install on Android. The debug key is generated per CI run, so later debug builds may require uninstalling the previous version first. This artifact expires 2026-12-03.
+
+The **current** build status and new APKs appear under [GitHub Actions](https://github.com/legioner666/Game/actions/workflows/godot-ci.yml).
