@@ -136,7 +136,7 @@ func _update_tendrils(delta: float) -> void:
 		_lobes[i].scale.y = (0.50 + 0.07 * sin(_clock * 2.8 + i)) if i == 0 else _lobes[i].scale.y
 	var roots_count := _supports.size()
 	for i in range(roots_count):
-		var root := global_position + ROOTS[i]
+		var root: Vector3 = global_position + ROOTS[i]
 		var phase := fposmod(_clock * (0.75 + speed * 0.14) + float(i) * 0.175, 1.0)
 		var planted := speed > 0.12 and phase < 0.43 and not has_ability_anchor
 		if planted and not _plants[i]:
@@ -147,7 +147,7 @@ func _update_tendrils(delta: float) -> void:
 		_extensions[i] = move_toward(_extensions[i], 1.0 if planted else 0.0, delta * 5.0)
 		_draw_between(_supports[i], root, root.lerp(_anchors[i], _extensions[i]))
 	for i in range(_working.size()):
-		var root := global_position + Vector3((float(i) - 1.0) * 0.25, 0.22, 0.3)
+		var root: Vector3 = global_position + Vector3((float(i) - 1.0) * 0.25, 0.22, 0.3)
 		var show := false
 		var target := root
 		if i == 0 and has_ability_anchor:
