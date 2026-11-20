@@ -1,7 +1,7 @@
 extends CharacterBody3D
 ## Parasite Evolution 0.2 — an original, organic silhouette.
 ## The broad body stays visible with retracted tentacles. Legs animate independently
-## and use two organic tapered sections, with persistent ground contact even at idle.
+## and remain continuous tapered tentacle tubes, without mechanical joints.
 
 const ROOTS := [
 	Vector3(-0.62, 0.04, 0.55), Vector3(0.57, 0.10, 0.61),
@@ -33,6 +33,7 @@ var _legs: Array[Dictionary] = []
 var _whips: Array[MeshInstance3D] = []
 var _hit_flash := 0.0
 var _pulse := 0.0
+var _tube_timer := 0.0
 var _slime_material: ShaderMaterial
 
 func _ready() -> void:
@@ -109,28 +110,25 @@ void fragment() {
 		spot.position = Vector3(cos(t) * r, 0.60 - float(i % 4) * 0.06, sin(t) * r)
 		_body.add_child(spot)
 	for i in range(ROOTS.size()):
-		var thick := 0.22 + float(i % 4) * 0.032
-		var lower := _segment(thick, thick * 0.72, _slime_material)
-		var upper := _segment(thick * 0.72, 0.014, _slime_material)
-		var knee := MeshInstance3D.new()
-		var knee_mesh := SphereMesh.new()
-		knee_mesh.radius = thick * 0.72
-		knee_mesh.height = thick * 1.44
-		knee_mesh.radial_segments = 9
-		knee_mesh.rings = 6
-		knee.mesh = knee_mesh
-		knee.material_override = _slime_material
-		get_tree().current_scene.add_child(knee)
+		var thick := 0.27 + float(i % 4) * 0.028
+		var mesh := ImmediateMesh.new()
+		var tentacle := MeshInstance3D.new()
+		tentacle.name = "Elastic organic appendage %02d" % i
+		tentacle.mesh = mesh
+		tentacle.material_override = _slime_material
+		get_tree().current_scene.add_child(tentacle)
 		var tip := MeshInstance3D.new()
 		var tip_mesh := SphereMesh.new()
-		tip_mesh.radius = 0.046
-		tip_mesh.height = 0.092
+		tip_mesh.radius = 0.045
+		tip_mesh.height = 0.09
 		tip.mesh = tip_mesh
 		tip.material_override = vein if i % 3 == 0 else _slime_material
 		get_tree().current_scene.add_child(tip)
-		_legs.append({"root": lower, "tip_section": upper, "bead": tip, "knee": knee,
+		_legs.append({
+			"tube": tentacle, "mesh": mesh, "bead": tip, "width": thick,
 			"anchor": global_position + ROOTS[i] * 2.2, "swing": 1.0,
-			"planted": false, "phase": float(i) / float(ROOTS.size())})
+			"planted": false, "phase": float(i) / float(ROOTS.size())
+		})
 	for i in range(3):
 		_whips.append(_segment(0.22 + float(i) * 0.03, 0.01, vein))
 	_last_position = global_position
@@ -163,6 +161,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 	_clock += delta
+	_tube_timer += delta
 	_hit_flash = maxf(0.0, _hit_flash - delta * 3.8)
 	_pulse = move_toward(_pulse, 0.0, delta * 2.3)
 	if dash_duration > 0.0:
@@ -237,15 +236,13 @@ func _animate(delta: float) -> void:
 		var full_anchor: Vector3 = limb["anchor"]
 		var foot: Vector3 = root.lerp(full_anchor, float(limb["swing"]))
 		foot.y = maxf(0.10, foot.y)
-		var elbow := root.lerp(foot, 0.51)
-		elbow.y += 0.15 + 0.10 * sin(phase * TAU)
-		_draw_segment(limb["root"], root, elbow)
-		_draw_segment(limb["tip_section"], elbow, foot)
-		var knee_node: MeshInstance3D = limb["knee"]
-		knee_node.global_position = elbow
+		if _tube_timer >= 0.038:
+			_draw_tube(limb["mesh"], root, foot, float(limb["width"]), phase)
 		var bead: MeshInstance3D = limb["bead"]
 		bead.global_position = foot
 		bead.visible = true
+	if _tube_timer >= 0.038:
+		_tube_timer = 0.0
 	for i in range(_whips.size()):
 		var root := global_position + Vector3((float(i) - 1.0) * 0.27, 0.34, 0.51)
 		var point: Vector3 = root
@@ -272,9 +269,64 @@ func _draw_segment(node: MeshInstance3D, a: Vector3, b: Vector3) -> void:
 		(a + b) * 0.5
 	)
 
+## Procedural surface reconstructed at 25 Hz. One continuous, tapered,
+## soft bend per limb. Reuses ImmediateMesh nodes (no new scene objects per tick).
+func _draw_tube(mesh: ImmediateMesh, origin: Vector3, finish: Vector3,
+		thickness: float, phase: float) -> void:
+	mesh.clear_surfaces()
+	var movement := finish - origin
+	if movement.length_squared() < 0.014:
+		return
+	var direction := movement.normalized()
+	var side := direction.cross(Vector3.UP)
+	if side.length_squared() < 0.02:
+		side = direction.cross(Vector3.FORWARD)
+	side = side.normalized()
+	var other := direction.cross(side).normalized()
+	const STEPS := 8
+	const SIDES := 8
+	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, _slime_material)
+	for i in range(STEPS):
+		var t0 := float(i) / float(STEPS)
+		var t1 := float(i + 1) / float(STEPS)
+		var c0 := origin.lerp(finish, t0) + Vector3.UP * sin(t0 * PI) * 0.16
+		var c1 := origin.lerp(finish, t1) + Vector3.UP * sin(t1 * PI) * 0.16
+		c0 += side * sin(t0 * PI) * sin(phase * TAU) * 0.07
+		c1 += side * sin(t1 * PI) * sin(phase * TAU) * 0.07
+		var r0 := maxf(0.009, thickness * pow(1.0 - t0, 1.3))
+		var r1 := maxf(0.009, thickness * pow(1.0 - t1, 1.3))
+		for j in range(SIDES):
+			var angle0 := float(j) * TAU / float(SIDES)
+			var angle1 := float(j + 1) * TAU / float(SIDES)
+			var n0 := side * cos(angle0) + other * sin(angle0)
+			var n1 := side * cos(angle1) + other * sin(angle1)
+			var v00 := c0 + n0 * r0
+			var v01 := c0 + n1 * r0
+			var v10 := c1 + n0 * r1
+			var v11 := c1 + n1 * r1
+			mesh.surface_set_normal(n0)
+			mesh.surface_set_uv(Vector2(t0, float(j) / float(SIDES)))
+			mesh.surface_add_vertex(v00)
+			mesh.surface_set_normal(n1)
+			mesh.surface_set_uv(Vector2(t0, float(j + 1) / float(SIDES)))
+			mesh.surface_add_vertex(v01)
+			mesh.surface_set_normal(n0)
+			mesh.surface_set_uv(Vector2(t1, float(j) / float(SIDES)))
+			mesh.surface_add_vertex(v10)
+			mesh.surface_set_normal(n0)
+			mesh.surface_set_uv(Vector2(t1, float(j) / float(SIDES)))
+			mesh.surface_add_vertex(v10)
+			mesh.surface_set_normal(n1)
+			mesh.surface_set_uv(Vector2(t0, float(j + 1) / float(SIDES)))
+			mesh.surface_add_vertex(v01)
+			mesh.surface_set_normal(n1)
+			mesh.surface_set_uv(Vector2(t1, float(j + 1) / float(SIDES)))
+			mesh.surface_add_vertex(v11)
+	mesh.surface_end()
+
 func _exit_tree() -> void:
 	for leg in _legs:
-		for key in ["root", "tip_section", "bead", "knee"]:
+		for key in ["tube", "bead"]:
 			var item: MeshInstance3D = leg[key]
 			if is_instance_valid(item):
 				item.queue_free()
