@@ -40,6 +40,8 @@ func _run() -> void:
 	_check(first["node"] is CharacterBody3D, "mobs collide with world rather than passing walls")
 	game.profile["bank"] = 400
 	game.profile["biomass"] = 35
+	game.player.evolve(RULES.level(game.profile), game.profile["upgrades"])
+	_check(game.player.mutation_stage == 2, "evolution visibly unlocks a new body stage")
 	game._open_shop()
 	_check(game._paused and game._shop_open, "safe-zone mutation panel pauses combat")
 	game._buy_upgrade(1)
