@@ -30,6 +30,8 @@ jobs:
         run: godot --headless --path godot --import
       - name: Rule and save-model tests
         run: godot --headless --path godot --script res://tests/economy_test.gd
+      - name: Full gameplay and joystick smoke
+        run: godot --headless --path godot --script res://tests/gameplay_smoke.gd
       - name: Boot game and inspect runtime log
         run: |
           set -o pipefail
