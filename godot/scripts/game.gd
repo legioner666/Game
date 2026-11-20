@@ -72,6 +72,9 @@ func _ready() -> void:
 	add_child(camera)
 	_camera_update(1.0)
 	_build_ui()
+	if OS.get_cmdline_user_args().has("--capture-qa"):
+		_save_disabled = true
+		_capture_qa.call_deferred()
 	_note("Рухайся, поглинай зразки та повертайся на базу.")
 	if _save_disabled:
 		_note("Помилка збереження: старі файли збережено; нові записи вимкнені.")
@@ -824,3 +827,42 @@ func _update_hud() -> void:
 		if Time.get_ticks_msec() / 1000.0 > _toast_until:
 			_message.text = ""
 		_message.get_parent().visible = not _message.text.is_empty()
+
+## Render real frames in CI with Xvfb. Not a substitute for touch/device playtest.
+func _capture_qa() -> void:
+	var root_path := ProjectSettings.globalize_path("res://").trim_suffix("/").get_base_dir()
+	var output := root_path.path_join("qa/screenshots")
+	if DirAccess.make_dir_recursive_absolute(output) != OK:
+		push_error("QA screenshots directory unavailable: " + output)
+		get_tree().quit(2)
+		return
+	await get_tree().create_timer(1.0).timeout
+	await RenderingServer.frame_post_draw
+	_write_qa_frame(output, "01-organism-base.png")
+	player.global_position = Vector3(-1.0, 0.62, 4.0)
+	player.reset_contacts()
+	await get_tree().create_timer(0.6).timeout
+	await RenderingServer.frame_post_draw
+	_write_qa_frame(output, "02-synaptic-sector.png")
+	player.global_position = Vector3(22.0, 0.62, 12.0)
+	player.reset_contacts()
+	await get_tree().create_timer(0.6).timeout
+	await RenderingServer.frame_post_draw
+	_write_qa_frame(output, "03-reactor-warden.png")
+	player.global_position = SAFE_POINT
+	player.reset_contacts()
+	await get_tree().create_timer(0.4).timeout
+	_open_shop()
+	await RenderingServer.frame_post_draw
+	_write_qa_frame(output, "04-evolution-shop.png")
+	print("QA capture completed: four rendered frames")
+	get_tree().quit(0)
+
+func _write_qa_frame(directory: String, name: String) -> void:
+	var image: Image = get_viewport().get_texture().get_image()
+	var destination := directory.path_join(name)
+	var err := image.save_png(destination)
+	if err == OK:
+		print("QA FRAME ", destination, "  ", image.get_width(), "x", image.get_height())
+	else:
+		push_error("Could not write frame: " + destination + " err=" + str(err))
