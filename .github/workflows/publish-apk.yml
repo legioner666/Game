@@ -1,0 +1,47 @@
+name: Publish Parasite Evolution direct APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release-direct-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_RUN: '44621505624'
+      RELEASE_TAG: 'parasite-v0.1.0-debug'
+    steps:
+      - name: Download previously verified Android debug APK (not the ZIP)
+        run: |
+          set -euo pipefail
+          mkdir -p package
+          gh run download "$SOURCE_RUN" --repo "$GH_REPO" \
+            --name Parasite-Evolution-Godot-Android-debug --dir package
+          test -s package/parasite-evolution-debug.apk
+          file package/parasite-evolution-debug.apk
+          sha256sum package/parasite-evolution-debug.apk
+      - name: Publish standalone APK as GitHub Release asset
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" package/parasite-evolution-debug.apk \
+              --repo "$GH_REPO" --clobber
+          else
+            gh release create "$RELEASE_TAG" package/parasite-evolution-debug.apk \
+              --repo "$GH_REPO" \
+              --target "$GITHUB_SHA" --prerelease \
+              --title "Parasite Evolution v0.1.0 Android debug" \
+              --notes "Original Godot 4.4.1 Android ARM64 debug prototype. Source build: https://github.com/legioner666/Game/actions/runs/44621505624. Signed APK verified in that run. Not published on Google Play; this does not bypass Play Protect. Install and gameplay on devices still need testing."
+          fi
+          gh release view "$RELEASE_TAG" --repo "$GH_REPO" \
+            --json assets --jq '.assets[] | select(.name == "parasite-evolution-debug.apk") | {name: .name, size: .size, url: .url}'
