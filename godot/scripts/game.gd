@@ -536,138 +536,290 @@ func _note(text: String) -> void:
 	else:
 		print("[Parasite Evolution] ", text)
 
+func _style(color: Color, outline: Color, radius := 18) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = color
+	box.border_color = outline
+	box.set_border_width_all(2)
+	box.set_corner_radius_all(radius)
+	box.content_margin_left = 12
+	box.content_margin_right = 12
+	box.content_margin_top = 8
+	box.content_margin_bottom = 8
+	return box
+
 func _make_button(text: String, parent: Control, action: Callable) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.custom_minimum_size = Vector2(180, 42)
-	parent.add_child(b)
-	b.pressed.connect(action)
-	return b
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size = Vector2(178, 60)
+	button.add_theme_font_size_override("font_size", 23)
+	button.add_theme_color_override("font_color", Color(0.89, 0.99, 0.97))
+	button.add_theme_color_override("font_hover_color", Color.WHITE)
+	button.add_theme_color_override("font_pressed_color", Color.WHITE)
+	button.add_theme_stylebox_override("normal", _style(Color(0.065, 0.13, 0.18, 0.94),
+		Color(0.14, 0.43, 0.44), 15))
+	button.add_theme_stylebox_override("hover", _style(Color(0.12, 0.33, 0.35, 0.98),
+		Color(0.20, 0.91, 0.72), 15))
+	button.add_theme_stylebox_override("pressed", _style(Color(0.09, 0.49, 0.38, 1.0),
+		Color(0.34, 1.0, 0.72), 15))
+	button.add_theme_stylebox_override("disabled", _style(Color(0.10, 0.11, 0.16, 0.82),
+		Color(0.20, 0.23, 0.28), 15))
+	parent.add_child(button)
+	button.pressed.connect(action)
+	return button
+
+func _make_label(value: String, parent: Control, size: int,
+		color := Color.WHITE) -> Label:
+	var label := Label.new()
+	label.text = value
+	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_color_override("font_shadow_color", Color(0.005, 0.025, 0.035, 0.65))
+	label.add_theme_constant_override("shadow_offset_x", 2)
+	label.add_theme_constant_override("shadow_offset_y", 2)
+	parent.add_child(label)
+	return label
+
+func _make_panel(parent: Control, name: String,
+		color: Color, border: Color, radius := 20) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.name = name
+	panel.add_theme_stylebox_override("panel", _style(color, border, radius))
+	parent.add_child(panel)
+	return panel
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
+	layer.name = "Mobile HUD / large safe-area controls"
 	add_child(layer)
 	_hud = Control.new()
+	_hud.name = "Landscape HUD"
+	layer.add_child(_hud)
 	_hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(_hud)
-	_stats = Label.new()
-	_stats.position = Vector2(22, 14)
-	_stats.add_theme_font_size_override("font_size", 21)
-	_hud.add_child(_stats)
-	_quest = Label.new()
-	_quest.position = Vector2(22, 89)
-	_quest.add_theme_font_size_override("font_size", 20)
-	_hud.add_child(_quest)
-	_message = Label.new()
-	_message.anchor_left = 0.27
-	_message.anchor_right = 0.77
-	_message.anchor_top = 0.19
-	_message.anchor_bottom = 0.19
-	_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_message.add_theme_font_size_override("font_size", 22)
-	_hud.add_child(_message)
+
+	var info := _make_panel(_hud, "Organism telemetry", Color(0.035, 0.065, 0.105, 0.88),
+		Color(0.16, 0.49, 0.48, 0.80))
+	info.position = Vector2(24, 20)
+	info.custom_minimum_size = Vector2(500, 160)
+	var info_margin := MarginContainer.new()
+	info_margin.add_theme_constant_override("margin_left", 12)
+	info_margin.add_theme_constant_override("margin_right", 12)
+	info_margin.add_theme_constant_override("margin_top", 6)
+	info_margin.add_theme_constant_override("margin_bottom", 6)
+	info.add_child(info_margin)
+	var info_stack := VBoxContainer.new()
+	info_stack.add_theme_constant_override("separation", 3)
+	info_margin.add_child(info_stack)
+	_stats = _make_label("", info_stack, 26, Color(0.94, 1.0, 0.95))
+	_health_bar = ProgressBar.new()
+	_health_bar.custom_minimum_size = Vector2(450, 18)
+	_health_bar.show_percentage = false
+	_health_bar.add_theme_stylebox_override("background",
+		_style(Color(0.14, 0.17, 0.24, 0.96), Color(0.15, 0.21, 0.27), 7))
+	_health_bar.add_theme_stylebox_override("fill",
+		_style(Color(0.19, 0.93, 0.67), Color(0.19, 0.93, 0.67), 7))
+	info_stack.add_child(_health_bar)
+	_cargo_bar = ProgressBar.new()
+	_cargo_bar.custom_minimum_size = Vector2(450, 12)
+	_cargo_bar.show_percentage = false
+	_cargo_bar.add_theme_stylebox_override("background",
+		_style(Color(0.15, 0.17, 0.25, 0.96), Color(0.16, 0.21, 0.28), 6))
+	_cargo_bar.add_theme_stylebox_override("fill",
+		_style(Color(0.67, 0.42, 0.94), Color(0.67, 0.42, 0.94), 6))
+	info_stack.add_child(_cargo_bar)
+	_quest = _make_label("", info_stack, 20, Color(0.73, 0.93, 0.88))
+
 	var top := HBoxContainer.new()
+	top.name = "Primary actions"
 	top.anchor_left = 1.0
 	top.anchor_right = 1.0
-	top.offset_left = -275
-	top.offset_right = -20
-	top.offset_top = 18
-	top.offset_bottom = 67
+	top.offset_left = -374
+	top.offset_right = -22
+	top.offset_top = 26
+	top.offset_bottom = 96
+	top.add_theme_constant_override("separation", 10)
 	_hud.add_child(top)
-	_make_button("База", top, _open_shop)
-	_make_button("Пауза", top, _toggle_pause)
-	_stick_base = ColorRect.new()
-	_stick_base.color = Color(0.10, 0.20, 0.22, 0.78)
+	var home := _make_button("БАЗА", top, _open_shop)
+	home.custom_minimum_size = Vector2(162, 66)
+	var pause := _make_button("ПАУЗА", top, _toggle_pause)
+	pause.custom_minimum_size = Vector2(160, 66)
+
+	_zone_label = _make_label("ЗОНА 01  /  ТИХИЙ СЕКТОР", _hud, 22,
+		Color(0.36, 0.96, 0.78))
+	_zone_label.anchor_left = 0.49
+	_zone_label.anchor_right = 0.75
+	_zone_label.offset_left = -150
+	_zone_label.offset_right = 0
+	_zone_label.offset_top = 28
+	_zone_label.offset_bottom = 65
+
+	var toast_panel := _make_panel(_hud, "Signal notification",
+		Color(0.02, 0.08, 0.12, 0.92), Color(0.27, 0.76, 0.64), 14)
+	toast_panel.anchor_left = 0.31
+	toast_panel.anchor_right = 0.69
+	toast_panel.anchor_top = 0.23
+	toast_panel.anchor_bottom = 0.23
+	toast_panel.offset_top = -22
+	toast_panel.offset_bottom = 44
+	_message = _make_label("", toast_panel, 24, Color(0.94, 1.0, 0.90))
+	_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	toast_panel.visible = false
+
+	_stick_base = Panel.new()
+	_stick_base.name = "Analog membrane joystick"
 	_stick_base.anchor_top = 1.0
 	_stick_base.anchor_bottom = 1.0
-	_stick_base.offset_left = 35
-	_stick_base.offset_right = 215
-	_stick_base.offset_top = -216
-	_stick_base.offset_bottom = -36
+	_stick_base.offset_left = 30
+	_stick_base.offset_right = 228
+	_stick_base.offset_top = -244
+	_stick_base.offset_bottom = -46
+	_stick_base.add_theme_stylebox_override("panel",
+		_style(Color(0.06, 0.19, 0.22, 0.57), Color(0.23, 0.74, 0.62, 0.68), 105))
 	_hud.add_child(_stick_base)
-	_stick_knob = ColorRect.new()
-	_stick_knob.color = Color(0.25, 0.82, 0.58, 0.9)
-	_stick_knob.size = Vector2(40, 40)
-	_stick_knob.position = Vector2(70, 70)
+	_stick_knob = Panel.new()
+	_stick_knob.name = "Move anchor"
+	_stick_knob.size = Vector2(60, 60)
+	_stick_knob.position = Vector2(69, 69)
 	_stick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stick_knob.add_theme_stylebox_override("panel",
+		_style(Color(0.23, 0.88, 0.67, 0.90), Color(0.86, 1.0, 0.85), 36))
 	_stick_base.add_child(_stick_knob)
+
 	var abilities := VBoxContainer.new()
+	abilities.name = "Three survival mutations"
 	abilities.anchor_left = 1.0
 	abilities.anchor_right = 1.0
 	abilities.anchor_top = 1.0
 	abilities.anchor_bottom = 1.0
-	abilities.offset_left = -240
-	abilities.offset_right = -24
-	abilities.offset_top = -262
-	abilities.offset_bottom = -30
+	abilities.offset_left = -245
+	abilities.offset_right = -26
+	abilities.offset_top = -287
+	abilities.offset_bottom = -40
+	abilities.add_theme_constant_override("separation", 9)
 	_hud.add_child(abilities)
 	for id in ["AB-PULL", "AB-MOVE", "AB-DAMAGE"]:
-		_skill_buttons[id] = _make_button(id, abilities, _use_ability.bind(id))
-	var reward := Button.new()
-	reward.text = "Нагорода"
-	reward.anchor_left = 0.49
-	reward.anchor_right = 0.65
-	reward.anchor_top = 1.0
-	reward.anchor_bottom = 1.0
-	reward.offset_top = -65
-	reward.offset_bottom = -18
-	_hud.add_child(reward)
-	reward.pressed.connect(_claim_quest)
-	_shop = PanelContainer.new()
+		var b := _make_button(id, abilities, _use_ability.bind(id))
+		b.custom_minimum_size = Vector2(212, 70)
+		_skill_buttons[id] = b
+
+	_reward_button = _make_button("НАГОРОДА", _hud, _claim_quest)
+	_reward_button.anchor_left = 0.45
+	_reward_button.anchor_right = 0.61
+	_reward_button.anchor_top = 1.0
+	_reward_button.anchor_bottom = 1.0
+	_reward_button.offset_top = -105
+	_reward_button.offset_bottom = -43
+
+	_shop = _make_panel(_hud, "Evolution and pause",
+		Color(0.025, 0.054, 0.095, 0.985), Color(0.22, 0.82, 0.66), 26)
 	_shop.anchor_left = 0.5
 	_shop.anchor_right = 0.5
 	_shop.anchor_top = 0.5
 	_shop.anchor_bottom = 0.5
-	_shop.offset_left = -330
-	_shop.offset_right = 330
-	_shop.offset_top = -300
-	_shop.offset_bottom = 300
-	_hud.add_child(_shop)
-	var content := VBoxContainer.new()
-	_shop.add_child(content)
-	var heading := Label.new()
-	heading.text = "Лабораторія адаптацій"
+	_shop.offset_left = -440
+	_shop.offset_right = 440
+	_shop.offset_top = -318
+	_shop.offset_bottom = 318
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(826, 575)
+	_shop.add_child(scroll)
+	var holder := VBoxContainer.new()
+	holder.custom_minimum_size = Vector2(810, 0)
+	holder.add_theme_constant_override("separation", 14)
+	scroll.add_child(holder)
+	_shop_content = VBoxContainer.new()
+	_shop_content.add_theme_constant_override("separation", 13)
+	holder.add_child(_shop_content)
+	var heading := _make_label("ГЕНОМНА ЛАБОРАТОРІЯ", _shop_content, 31,
+		Color(0.33, 1.0, 0.79))
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	heading.add_theme_font_size_override("font_size", 24)
-	content.add_child(heading)
+	_shop_balance = _make_label("", _shop_content, 24, Color(0.91, 0.96, 1.0))
+	_shop_balance.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var upgrade_grid := GridContainer.new()
 	upgrade_grid.columns = 2
-	content.add_child(upgrade_grid)
+	upgrade_grid.add_theme_constant_override("h_separation", 12)
+	upgrade_grid.add_theme_constant_override("v_separation", 10)
+	_shop_content.add_child(upgrade_grid)
 	for i in range(6):
 		var b := _make_button("", upgrade_grid, _buy_upgrade.bind(i))
-		b.custom_minimum_size = Vector2(305, 42)
+		b.custom_minimum_size = Vector2(393, 62)
 		_shop_buttons.append(b)
-	_relay_button = _make_button("", content, _buy_relay)
-	_make_button("Відкрити: Ривок", content, _unlock.bind("AB-MOVE"))
-	_make_button("Відкрити: Сильний удар", content, _unlock.bind("AB-DAMAGE"))
-	_make_button("Отримати нагороду завдання", content, _claim_quest)
-	_make_button("Продовжити", content, _close_panel)
+	_relay_button = _make_button("ОРГАНІЧНЕ РЕЛЕ", _shop_content, _buy_relay)
+	_relay_button.custom_minimum_size.y = 62
+	var unlocks := HBoxContainer.new()
+	unlocks.add_theme_constant_override("separation", 12)
+	_shop_content.add_child(unlocks)
+	var move_btn := _make_button("РИВОК · 35", unlocks, _unlock.bind("AB-MOVE"))
+	move_btn.custom_minimum_size = Vector2(393, 65)
+	var damage_btn := _make_button("ІМПУЛЬС · 80", unlocks, _unlock.bind("AB-DAMAGE"))
+	damage_btn.custom_minimum_size = Vector2(393, 65)
+	_make_button("ОТРИМАТИ НАГОРОДУ ЗА ЗАВДАННЯ", _shop_content, _claim_quest)
+	_make_button("ПОВЕРНУТИСЯ ДО ЕКСПЕДИЦІЇ", _shop_content, _close_panel)
+
+	_pause_content = VBoxContainer.new()
+	_pause_content.add_theme_constant_override("separation", 32)
+	holder.add_child(_pause_content)
+	var pause_heading := _make_label("ПАУЗА", _pause_content, 40, Color(0.33, 1.0, 0.79))
+	pause_heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var pause_description := _make_label(
+		"Дослідження призупинене.\nВідкритий світ зберігає твій прогрес.", _pause_content, 26)
+	pause_description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_make_button("ПРОДОВЖИТИ", _pause_content, _close_panel)
 	_shop.visible = false
 	_update_hud()
 
 func _update_hud() -> void:
 	if not is_instance_valid(player) or not _stats:
 		return
-	var lvl: int = Rules.level(profile)
-	_stats.text = "HP %d/%d  Геном %d  Рівень %d\nВантаж %d/%d  Реле %d/2" % [
-		ceili(float(profile["health"])), int(Rules.maximum_health(profile)), int(profile["bank"]), lvl,
-		int(profile["cargo_units"]), Rules.capacity(profile), int(profile["relay_level"])
+	var level: int = Rules.level(profile)
+	var bank: int = int(profile["bank"])
+	var units: int = int(profile["cargo_units"])
+	var capacity: int = Rules.capacity(profile)
+	_stats.text = "ГЕНОМ %d   •   РІВЕНЬ %d    •   HP %d/%d" % [
+		bank, level, ceili(float(profile["health"])), int(Rules.maximum_health(profile))
 	]
+	_health_bar.max_value = Rules.maximum_health(profile)
+	_health_bar.value = float(profile["health"])
+	_cargo_bar.max_value = capacity
+	_cargo_bar.value = units
 	var stage: int = int(profile["quest_stage"])
-	_quest.text = "%s  %d/%d" % [
-		QUEST_NAMES[stage] if stage < QUEST_NAMES.size() else "Досліджуй світ",
-		Rules.quest_progress(profile), Rules.QUEST_GOALS[stage] if stage < 5 else 0
-	]
+	_quest.text = ("ЗАВДАННЯ: %s   %d/%d" % [
+		QUEST_NAMES[stage], mini(Rules.quest_progress(profile), Rules.QUEST_GOALS[stage]),
+		Rules.QUEST_GOALS[stage]
+	]) if stage < QUEST_NAMES.size() else "ЗАВДАННЯ ВИКОНАНІ · ДОСЛІДЖУЙ СВІТ"
+	var current_sector := _zone_at(player.global_position)
+	var zone_titles := ["ТИХИЙ БІОМ", "СИНАПТИЧНИЙ КРИСТАЛ", "СЕРЦЕ РЕАКТОРА"]
+	_zone_label.text = "ЗОНА %02d   /   %s" % [current_sector + 1, zone_titles[current_sector]]
+	var names := {"AB-PULL":"ХВАТКА", "AB-MOVE":"РИВОК", "AB-DAMAGE":"ІМПУЛЬС"}
 	for id in _skill_buttons.keys():
-		var cooldown: float = float(profile["cooldowns"][id])
-		_skill_buttons[id].text = "%s  %s" % [id,
-			("%.1f с" % cooldown) if cooldown > 0.0 else ("OK" if profile["abilities"].has(id) else "Заблоковано")]
+		var cd: float = float(profile["cooldowns"].get(id, 0.0))
+		var owned: bool = profile["abilities"].has(id)
+		_skill_buttons[id].text = "%s    %s" % [
+			names[id], ("%.1f c" % cd) if cd > 0.0 else ("ГОТОВО" if owned else "ЗАКРИТО")
+		]
+		_skill_buttons[id].disabled = cd > 0.0 or _paused
 	for i in range(_shop_buttons.size()):
-		var price := Rules.upgrade_price(profile, i)
-		_shop_buttons[i].text = "%s %d  •  %d" % [UPGRADE_NAMES[i], int(profile["upgrades"][i]), price]
-	if _relay_button:
-		_relay_button.text = "Органічне реле: %d/2  •  %d" % [
-			int(profile["relay_level"]), Rules.relay_price(profile)]
-	if _message and Time.get_ticks_msec() / 1000.0 > _toast_until:
-		_message.text = ""
+		var current_level: int = int(profile["upgrades"][i])
+		var limit: int = 2 if i == 4 else 20
+		var locked: bool = i in [3, 4] and level < 2
+		var price: int = Rules.upgrade_price(profile, i)
+		_shop_buttons[i].text = "%s  %d/%d    •    %s" % [
+			UPGRADE_NAMES[i].to_upper(), current_level, limit,
+			"РІВЕНЬ 2" if locked else ("МАКС." if current_level >= limit else str(price))
+		]
+		_shop_buttons[i].disabled = locked or current_level >= limit or bank < price
+	_relay_button.text = "ОРГАНІЧНЕ РЕЛЕ %d/2   •   %s" % [
+		int(profile["relay_level"]),
+		"РІВЕНЬ 2" if level < 2 else ("МАКС." if int(profile["relay_level"]) >= 2 else str(Rules.relay_price(profile)))
+	]
+	_relay_button.disabled = level < 2 or int(profile["relay_level"]) >= 2 or bank < Rules.relay_price(profile)
+	_shop_balance.text = "ДОСТУПНИЙ ГЕНОМ: %d     |     ВАНТАЖ: %d/%d" % [bank, units, capacity]
+	_reward_button.disabled = not _inside_base() or stage >= QUEST_NAMES.size() or Rules.quest_progress(profile) < Rules.QUEST_GOALS[stage]
+	_shop.visible = _paused
+	_shop_content.visible = _shop_open
+	_pause_content.visible = not _shop_open
+	if _message:
+		if Time.get_ticks_msec() / 1000.0 > _toast_until:
+			_message.text = ""
+		_message.get_parent().visible = not _message.text.is_empty()
