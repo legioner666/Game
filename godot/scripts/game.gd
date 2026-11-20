@@ -28,6 +28,13 @@ var _hud: Control
 var _stats: Label
 var _quest: Label
 var _message: Label
+var _health_bar: ProgressBar
+var _cargo_bar: ProgressBar
+var _zone_label: Label
+var _shop_balance: Label
+var _shop_content: VBoxContainer
+var _pause_content: VBoxContainer
+var _reward_button: Button
 var _skill_buttons: Dictionary = {}
 var _shop_buttons: Array[Button] = []
 var _relay_button: Button
@@ -41,8 +48,8 @@ var _hud_elapsed := 0.0
 var _toast_until := 0.0
 var _move_stick := Vector2.ZERO
 var _stick_id := -1
-var _stick_base: ColorRect
-var _stick_knob: ColorRect
+var _stick_base: Panel
+var _stick_knob: Panel
 var _last_heading := Vector3.FORWARD
 
 func _ready() -> void:
@@ -441,14 +448,14 @@ func _input(event: InputEvent) -> void:
 
 func _move_stick_at(screen_point: Vector2) -> void:
 	var center := _stick_base.get_global_rect().get_center()
-	_move_stick = ((screen_point - center) / 68.0).limit_length(1.0)
-	_stick_knob.position = Vector2(70, 70) + _move_stick * 50.0
+	_move_stick = ((screen_point - center) / 88.0).limit_length(1.0)
+	_stick_knob.position = Vector2(69, 69) + _move_stick * 64.0
 
 func _reset_stick() -> void:
 	_stick_id = -1
 	_move_stick = Vector2.ZERO
 	if _stick_knob:
-		_stick_knob.position = Vector2(70, 70)
+		_stick_knob.position = Vector2(69, 69)
 
 func _set_paused(value: bool) -> void:
 	_paused = value
