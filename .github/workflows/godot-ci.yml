@@ -2,7 +2,7 @@ name: Parasite Evolution — Godot CI / Android debug
 
 on:
   push:
-    branches: [main]
+    branches: [main, "gpt/**", "claude/**"]
     paths:
       - 'godot/**'
       - '.github/workflows/godot-ci.yml'
