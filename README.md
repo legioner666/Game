@@ -37,3 +37,7 @@ First successful Godot 4.4.1 CI run: [#44621505624](https://github.com/legioner6
 [Download the Android debug build artifact (ZIP)](https://github.com/legioner666/Game/actions/runs/44621505624/artifacts/14577755406). Extract `parasite-evolution-debug.apk` from ZIP and install on Android. The debug key is generated per CI run, so later debug builds may require uninstalling the previous version first. This artifact expires 2026-12-03.
 
 The **current** build status and new APKs appear under [GitHub Actions](https://github.com/legioner666/Game/actions/workflows/godot-ci.yml).
+
+## Direct APK (no ZIP)
+
+[Download parasite-evolution-debug.apk directly](https://github.com/legioner666/Game/releases/download/parasite-v0.1.0-debug/parasite-evolution-debug.apk) — verified prerelease asset from GitHub Actions run #44621505624. This is a **debug test build**, not a Google Play release. Android and Play Protect may still show security prompts for sideloaded applications; this project does not disable or bypass them. The signing key for this historical build was generated in CI, so subsequent independently signed debug builds may require removal of the old installation before updating.
