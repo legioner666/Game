@@ -805,7 +805,7 @@ func _update_hud() -> void:
 		Rules.QUEST_GOALS[stage]
 	]) if stage < QUEST_NAMES.size() else "ЗАВДАННЯ ВИКОНАНІ · ДОСЛІДЖУЙ СВІТ"
 	var current_sector := _zone_at(player.global_position)
-	var zone_titles := ["ТИХИЙ БІОМ", "СИНАПТИЧНИЙ КРИСТАЛ", "СЕРЦЕ РЕАКТОРА"]
+	var zone_titles := ["ТИХИЙ БІОМ", "КРИСТАЛИ", "РЕАКТОР"]
 	_zone_label.text = "ЗОНА %02d · %s" % [current_sector + 1, zone_titles[current_sector]]
 	var names := {"AB-PULL":"ХВАТКА", "AB-MOVE":"РИВОК", "AB-DAMAGE":"ІМПУЛЬС"}
 	for id in _skill_buttons.keys():
