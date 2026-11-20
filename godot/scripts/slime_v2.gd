@@ -34,6 +34,10 @@ var _whips: Array[MeshInstance3D] = []
 var _hit_flash := 0.0
 var _pulse := 0.0
 var _tube_timer := 0.0
+var mutation_stage := 1
+var _growth := 1.0
+var _length_scale := 1.0
+var _mutations: Array[MeshInstance3D] = []
 var _slime_material: ShaderMaterial
 
 func _ready() -> void:
@@ -109,6 +113,18 @@ void fragment() {
 		spot.material_override = vein if i % 3 == 0 else armor
 		spot.position = Vector3(cos(t) * r, 0.60 - float(i % 4) * 0.06, sin(t) * r)
 		_body.add_child(spot)
+	for i in range(5):
+		var ridge := MeshInstance3D.new()
+		var ridge_mesh := SphereMesh.new()
+		ridge_mesh.radial_segments = 11
+		ridge_mesh.rings = 6
+		ridge.mesh = ridge_mesh
+		ridge.material_override = vein if i % 2 == 0 else armor
+		ridge.position = Vector3((float(i) - 2.0) * 0.22, 0.5 + float(i % 3) * 0.08, -0.30)
+		ridge.scale = Vector3(0.18, 0.18 + float(i % 3) * 0.08, 0.30)
+		ridge.visible = false
+		_body.add_child(ridge)
+		_mutations.append(ridge)
 	for i in range(ROOTS.size()):
 		var thick := 0.27 + float(i % 4) * 0.028
 		var mesh := ImmediateMesh.new()
@@ -132,6 +148,20 @@ void fragment() {
 	for i in range(3):
 		_whips.append(_segment(0.22 + float(i) * 0.03, 0.01, vein))
 	_last_position = global_position
+
+func evolve(level: int, upgrades: Array) -> void:
+	var next_stage := 1 + int(level >= 2) + int(level >= 5)
+	_growth = 1.0 + minf(0.26, float(maxi(0, level - 1)) * 0.035) + minf(0.10, float(upgrades[1]) * 0.01)
+	_length_scale = 1.0 + minf(0.35, float(maxi(0, level - 1)) * 0.04)
+	_body.scale = Vector3.ONE * _growth
+	if mutation_stage != next_stage:
+		mutation_stage = next_stage
+		_pulse = 1.0
+	for i in range(_mutations.size()):
+		_mutations[i].visible = mutation_stage >= 2 and (mutation_stage >= 3 or i % 2 == 0)
+	var glow := Color(0.07, 0.63, 0.51) if mutation_stage == 1 else (
+		Color(0.17, 0.87, 0.62) if mutation_stage == 2 else Color(0.53, 0.31, 0.97))
+	_slime_material.set_shader_parameter("bioluminescence", Vector3(glow.r, glow.g, glow.b))
 
 func _material(color: Color, glowing: bool) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -222,11 +252,11 @@ func _animate(delta: float) -> void:
 		var phase: float = fposmod(_clock * (0.56 + speed * 0.12) + float(limb["phase"]), 1.0)
 		var planting := speed > 0.18 and phase < 0.55
 		if planting and not bool(limb["planted"]):
-			var plant: Vector3 = global_position + radial * LENGTHS[i] + direction * (0.8 + float(i % 3) * 0.25)
+			var plant: Vector3 = global_position + radial * LENGTHS[i] * _length_scale + direction * (0.8 + float(i % 3) * 0.25)
 			plant.y = 0.14
 			limb["anchor"] = plant
 		elif speed < 0.18:
-			var rest: Vector3 = global_position + radial * LENGTHS[i] * (0.70 + 0.10 * sin(float(i) * 1.9))
+			var rest: Vector3 = global_position + radial * LENGTHS[i] * _length_scale * (0.70 + 0.10 * sin(float(i) * 1.9))
 			rest.y = 0.12
 			limb["anchor"] = (limb["anchor"] as Vector3).lerp(rest, minf(1.0, delta * 4.0))
 		limb["planted"] = planting
