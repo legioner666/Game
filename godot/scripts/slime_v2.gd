@@ -39,6 +39,7 @@ var _growth := 1.0
 var _length_scale := 1.0
 var _mutations: Array[MeshInstance3D] = []
 var _slime_material: ShaderMaterial
+var _tentacle_material: ShaderMaterial
 
 func _ready() -> void:
 	collision_layer = 2
@@ -58,7 +59,7 @@ func _ready() -> void:
 	var surface := Shader.new()
 	surface.code = """
 shader_type spatial;
-render_mode cull_back, diffuse_burley, specular_schlick_ggx;
+render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 uniform vec4 body_color : source_color = vec4(0.065, 0.029, 0.098, 1.0);
 uniform vec3 bioluminescence : source_color = vec3(0.07, 0.63, 0.51);
 uniform float pulse = 0.0;
@@ -72,10 +73,12 @@ void fragment() {
 	ROUGHNESS = 0.74;
 	METALLIC = 0.0;
 	float edge = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 4.0);
-	EMISSION = bioluminescence * (edge * 0.27 + pulse * 0.60);
+	EMISSION = bioluminescence * (edge * 0.085 + pulse * 0.52);
 }
 """
 	_slime_material.shader = surface
+	_tentacle_material = _slime_material.duplicate() as ShaderMaterial
+	_tentacle_material.set_shader_parameter("bioluminescence", Vector3(0.025, 0.22, 0.16))
 	var positions := [
 		Vector3(0.0, 0.12, 0.0), Vector3(-0.36, 0.08, 0.29),
 		Vector3(0.44, -0.10, -0.20), Vector3(-0.20, 0.15, -0.51),
@@ -131,7 +134,7 @@ void fragment() {
 		var tentacle := MeshInstance3D.new()
 		tentacle.name = "Elastic organic appendage %02d" % i
 		tentacle.mesh = mesh
-		tentacle.material_override = _slime_material
+		tentacle.material_override = _tentacle_material
 		get_tree().current_scene.add_child(tentacle)
 		var tip := MeshInstance3D.new()
 		var tip_mesh := SphereMesh.new()
@@ -162,6 +165,7 @@ func evolve(level: int, upgrades: Array) -> void:
 	var glow := Color(0.07, 0.63, 0.51) if mutation_stage == 1 else (
 		Color(0.17, 0.87, 0.62) if mutation_stage == 2 else Color(0.53, 0.31, 0.97))
 	_slime_material.set_shader_parameter("bioluminescence", Vector3(glow.r, glow.g, glow.b))
+	_tentacle_material.set_shader_parameter("bioluminescence", Vector3(glow.r * 0.35, glow.g * 0.31, glow.b * 0.35))
 
 func _material(color: Color, glowing: bool) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -315,7 +319,7 @@ func _draw_tube(mesh: ImmediateMesh, origin: Vector3, finish: Vector3,
 	var other := direction.cross(side).normalized()
 	const STEPS := 8
 	const SIDES := 8
-	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, _slime_material)
+	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, _tentacle_material)
 	for i in range(STEPS):
 		var t0 := float(i) / float(STEPS)
 		var t1 := float(i + 1) / float(STEPS)
