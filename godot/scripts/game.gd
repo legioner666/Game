@@ -108,8 +108,6 @@ func _build_world() -> void:
 	for zone in range(3):
 		var x := -23.0 + float(zone) * 23.0
 		_box("Sector floor " + str(zone), Vector3(x, -0.30, 0), Vector3(23, 0.6, 44), ZONE_COLORS[zone])
-		for z in range(-20, 21, 4):
-			_box("Sector marking", Vector3(x, 0.01, float(z)), Vector3(22, 0.02, 0.05), Color(0.30, 0.56, 0.60), false)
 	for x in [-35.0, 35.0]:
 		_box("Outer wall", Vector3(x, 1, 0), Vector3(1, 2, 46), Color(0.10, 0.15, 0.23))
 	for z in [-23.0, 23.0]:
@@ -125,9 +123,9 @@ func _build_world() -> void:
 	cylinder.height = 0.04
 	safe.mesh = cylinder
 	var safe_material := StandardMaterial3D.new()
-	safe_material.albedo_color = Color(0.07, 0.50, 0.35)
+	safe_material.albedo_color = Color(0.032, 0.115, 0.119)
 	safe_material.emission_enabled = true
-	safe_material.emission = Color(0.02, 0.08, 0.05)
+	safe_material.emission = Color(0.01, 0.025, 0.025)
 	safe.material_override = safe_material
 	safe.position = Vector3(SAFE_POINT.x, 0.04, SAFE_POINT.z)
 	add_child(safe)
