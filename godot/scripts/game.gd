@@ -3,7 +3,10 @@ extends Node3D
 ## Distinct from the Crown Rush Godot project in a different repository.
 
 const Rules = preload("res://scripts/economy.gd")
-const Slime = preload("res://scripts/slime.gd")
+const Slime = preload("res://scripts/slime_v2.gd")
+const Art = preload("res://scripts/world_art.gd")
+const MobArt = preload("res://scripts/enemy_art.gd")
+const Effects = preload("res://scripts/effects.gd")
 const SAVE := "user://parasite-evolution-v1.json"
 const SAFE_POINT := Vector3(-22.0, 0.62, -10.0)
 const SAFE_RADIUS := 5.0
@@ -19,44 +22,62 @@ const ZONE_COLORS := [
 var profile: Dictionary
 var player: CharacterBody3D
 var camera: Camera3D
+var fx: Node3D
 var mobs: Array[Dictionary] = []
 var _hud: Control
 var _stats: Label
 var _quest: Label
 var _message: Label
+var _health_bar: ProgressBar
+var _cargo_bar: ProgressBar
+var _zone_label: Label
+var _shop_balance: Label
+var _shop_content: VBoxContainer
+var _pause_content: VBoxContainer
+var _reward_button: Button
 var _skill_buttons: Dictionary = {}
 var _shop_buttons: Array[Button] = []
 var _relay_button: Button
 var _shop: PanelContainer
+var _overlay_scrim: ColorRect
 var _paused := false
 var _shop_open := false
 var _save_disabled := false
+var _qa_mode := false
 var _safe_previous := false
 var _save_elapsed := 0.0
 var _hud_elapsed := 0.0
 var _toast_until := 0.0
 var _move_stick := Vector2.ZERO
 var _stick_id := -1
-var _stick_base: ColorRect
-var _stick_knob: ColorRect
+var _stick_base: Panel
+var _stick_knob: Panel
 var _last_heading := Vector3.FORWARD
 
 func _ready() -> void:
 	profile = _load_profile()
 	_build_world()
+	Art.build(self)
+	fx = Effects.new()
+	fx.name = "Capture, attack and absorption effects"
+	add_child(fx)
 	player = Slime.new()
 	player.name = "Amorphous Parasite"
 	add_child(player)
 	player.global_position = Vector3(float(profile["x"]), SAFE_POINT.y, float(profile["z"]))
+	player.evolve(Rules.level(profile), profile["upgrades"])
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 20.5
+	camera.size = 13.0
 	camera.current = true
 	camera.near = 0.1
 	camera.far = 120.0
 	add_child(camera)
 	_camera_update(1.0)
 	_build_ui()
+	_qa_mode = OS.get_cmdline_user_args().has("--capture-qa")
+	if _qa_mode:
+		_capture_qa.call_deferred()
 	_note("Рухайся, поглинай зразки та повертайся на базу.")
 	if _save_disabled:
 		_note("Помилка збереження: старі файли збережено; нові записи вимкнені.")
@@ -87,8 +108,6 @@ func _build_world() -> void:
 	for zone in range(3):
 		var x := -23.0 + float(zone) * 23.0
 		_box("Sector floor " + str(zone), Vector3(x, -0.30, 0), Vector3(23, 0.6, 44), ZONE_COLORS[zone])
-		for z in range(-20, 21, 4):
-			_box("Sector marking", Vector3(x, 0.01, float(z)), Vector3(22, 0.02, 0.05), Color(0.30, 0.56, 0.60), false)
 	for x in [-35.0, 35.0]:
 		_box("Outer wall", Vector3(x, 1, 0), Vector3(1, 2, 46), Color(0.10, 0.15, 0.23))
 	for z in [-23.0, 23.0]:
@@ -104,9 +123,9 @@ func _build_world() -> void:
 	cylinder.height = 0.04
 	safe.mesh = cylinder
 	var safe_material := StandardMaterial3D.new()
-	safe_material.albedo_color = Color(0.07, 0.50, 0.35)
+	safe_material.albedo_color = Color(0.032, 0.115, 0.119)
 	safe_material.emission_enabled = true
-	safe_material.emission = Color(0.02, 0.08, 0.05)
+	safe_material.emission = Color(0.01, 0.025, 0.025)
 	safe.material_override = safe_material
 	safe.position = Vector3(SAFE_POINT.x, 0.04, SAFE_POINT.z)
 	add_child(safe)
@@ -124,25 +143,25 @@ func _build_world() -> void:
 	_spawn_mob(Vector3(27, 0.75, 15), 2, true)
 
 func _spawn_mob(point: Vector3, zone: int, warden: bool) -> void:
-	var creature := Node3D.new()
+	var creature := CharacterBody3D.new()
+	creature.collision_layer = 4
+	creature.collision_mask = 1
+	var collider := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.8 if warden else 0.42
+	capsule.height = 2.2 if warden else 1.25
+	collider.shape = capsule
+	collider.position.y = 0.45 if warden else 0.09
+	creature.add_child(collider)
 	creature.name = "Warden" if warden else "Specimen %s" % str(mobs.size())
 	add_child(creature)
 	creature.position = point
-	var shell := MeshInstance3D.new()
-	var mesh := CapsuleMesh.new()
-	mesh.radius = 0.85 if warden else 0.35
-	mesh.height = 2.5 if warden else 1.1
-	shell.mesh = mesh
-	shell.position.y = 0.65 if warden else 0.25
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.69, 0.24, 0.16) if warden else Color(0.25, 0.57, 0.61)
-	shell.material_override = mat
-	creature.add_child(shell)
+	MobArt.create(creature, zone, warden)
 	var hp: float = 200.0 if warden else 24.0 + float(zone) * 18.0
 	mobs.append({
 		"node": creature, "home": point, "zone": zone, "warden": warden,
 		"hp": hp, "max_hp": hp, "alive": true, "respawn": 0.0, "pulled": 0.0,
-		"attack": 0.0, "warning": 0.0
+		"attack": 0.0, "warning": 0.0, "stomp": point
 	})
 
 func _physics_process(delta: float) -> void:
@@ -195,14 +214,17 @@ func _update_enemies(delta: float, safe: bool) -> void:
 				mob["alive"] = true
 				mob["hp"] = mob["max_hp"]
 				node.visible = true
+				(node as CharacterBody3D).collision_layer = 4
 			continue
 		mob["attack"] = maxf(0.0, float(mob["attack"]) - delta)
 		mob["pulled"] = maxf(0.0, float(mob["pulled"]) - delta)
 		var distance := node.global_position.distance_to(player.global_position)
 		if mob["warning"] > 0.0:
 			mob["warning"] -= delta
-			if mob["warning"] <= 0.0 and distance < 3.0 and not safe:
-				_hurt(15.0)
+			if mob["warning"] <= 0.0:
+				fx.hit(mob["stomp"], true)
+				if not safe and player.global_position.distance_to(mob["stomp"]) < 3.0:
+					_hurt(15.0)
 			continue
 		var destination: Vector3 = mob["home"]
 		if mob["pulled"] > 0.0 and not safe:
@@ -215,7 +237,9 @@ func _update_enemies(delta: float, safe: bool) -> void:
 				mob["attack"] = 3.0 if mob["warden"] else 1.5
 				if mob["warden"]:
 					mob["warning"] = 0.85
-					_note("Наглядач готує удар!")
+					mob["stomp"] = player.global_position
+					fx.telegraph(player.global_position)
+					_note("Наглядач готує удар — ухиляйся!")
 				else:
 					_hurt(4.0 + float(mob["zone"]) * 2.0)
 		var movement: Vector3 = destination - node.global_position
@@ -225,7 +249,7 @@ func _update_enemies(delta: float, safe: bool) -> void:
 			var step := movement.limit_length(velocity * delta)
 			var candidate := node.global_position + step
 			if _zone_at(candidate) == mob["zone"] and not _inside_base(candidate):
-				node.global_position = candidate
+				(node as CharacterBody3D).move_and_collide(step)
 		if mob["warden"]:
 			node.rotation.y += delta * 0.4
 
@@ -259,11 +283,19 @@ func _damage_mob(mob: Dictionary, damage: float) -> void:
 	var units := _units(mob)
 	var value := 30 if mob["warden"] else 3 + int(mob["zone"]) * 2
 	var experience := 20 if mob["warden"] else 3 + int(mob["zone"])
+	var before_level: int = Rules.level(profile)
 	if not Rules.capture(profile, units, value, experience, mob["warden"]):
 		mob["hp"] = 1.0
 		return
+	if Rules.level(profile) > before_level:
+		player.evolve(Rules.level(profile), profile["upgrades"])
+		fx.shockwave(player.global_position)
+		_note("ЕВОЛЮЦІЯ! НОВИЙ РІВЕНЬ " + str(Rules.level(profile)))
 	mob["alive"] = false
+	fx.capture(mob["node"].global_position, bool(mob["warden"]))
+	player.absorb_flash()
 	mob["node"].visible = false
+	(mob["node"] as CharacterBody3D).collision_layer = 0
 	mob["respawn"] = 90.0 if mob["warden"] else 25.0
 	if int(profile["cargo_units"]) == Rules.capacity(profile):
 		_note("Вантаж заповнений. Повернися на базу.")
@@ -282,6 +314,8 @@ func _zone_at(point: Vector3) -> int:
 func _hurt(value: float) -> void:
 	if _inside_base() or value <= 0.0:
 		return
+	player.flash_hit()
+	fx.hit(player.global_position)
 	profile["health"] = maxf(0.0, float(profile["health"]) - value)
 	if profile["health"] <= 0.0:
 		var serial: int = int(profile["death_serial"]) + 1
@@ -313,6 +347,7 @@ func _use_ability(id: String) -> void:
 		profile["cooldowns"][id] = 4.0
 	elif id == "AB-DAMAGE":
 		var inflicted := 0
+		fx.shockwave(player.global_position)
 		for mob in mobs:
 			if mob["alive"] and mob["node"].global_position.distance_to(player.global_position) < 4.5:
 				_damage_mob(mob, 38.0)
@@ -336,7 +371,7 @@ func _nearest(radius: float) -> Dictionary:
 	return chosen
 
 func _camera_update(delta: float) -> void:
-	var target := player.global_position + Vector3(0, 19, -14)
+	var target := player.global_position + Vector3(0, 11.3, -15.2)
 	camera.global_position = target if delta >= 1.0 else camera.global_position.lerp(target, 1.0 - exp(-7.0 * delta))
 	camera.look_at(player.global_position + Vector3.UP * 0.3, Vector3.UP)
 
@@ -364,7 +399,7 @@ func _load_profile() -> Dictionary:
 	return Rules.fresh()
 
 func _save_game() -> void:
-	if _save_disabled or not is_instance_valid(player):
+	if _save_disabled or _qa_mode or not is_instance_valid(player):
 		return
 	var next: Dictionary = profile.duplicate(true)
 	next["revision"] = int(next["revision"]) + 1
@@ -423,14 +458,14 @@ func _input(event: InputEvent) -> void:
 
 func _move_stick_at(screen_point: Vector2) -> void:
 	var center := _stick_base.get_global_rect().get_center()
-	_move_stick = ((screen_point - center) / 68.0).limit_length(1.0)
-	_stick_knob.position = Vector2(70, 70) + _move_stick * 50.0
+	_move_stick = ((screen_point - center) / 88.0).limit_length(1.0)
+	_stick_knob.position = Vector2(69, 69) + _move_stick * 64.0
 
 func _reset_stick() -> void:
 	_stick_id = -1
 	_move_stick = Vector2.ZERO
 	if _stick_knob:
-		_stick_knob.position = Vector2(70, 70)
+		_stick_knob.position = Vector2(69, 69)
 
 func _set_paused(value: bool) -> void:
 	_paused = value
@@ -465,6 +500,7 @@ func _buy_upgrade(index: int) -> void:
 	if not _shop_open or not _inside_base():
 		return
 	if Rules.buy_upgrade(profile, index):
+		player.evolve(Rules.level(profile), profile["upgrades"])
 		profile["health"] = minf(Rules.maximum_health(profile), float(profile["health"]) + (10.0 if index == 5 else 0.0))
 		_note("Мутацію придбано.")
 		_save_game()
@@ -511,138 +547,342 @@ func _note(text: String) -> void:
 	else:
 		print("[Parasite Evolution] ", text)
 
+func _style(color: Color, outline: Color, radius := 18) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = color
+	box.border_color = outline
+	box.set_border_width_all(2)
+	box.set_corner_radius_all(radius)
+	box.content_margin_left = 12
+	box.content_margin_right = 12
+	box.content_margin_top = 8
+	box.content_margin_bottom = 8
+	return box
+
 func _make_button(text: String, parent: Control, action: Callable) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.custom_minimum_size = Vector2(180, 42)
-	parent.add_child(b)
-	b.pressed.connect(action)
-	return b
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size = Vector2(178, 60)
+	button.add_theme_font_size_override("font_size", 23)
+	button.add_theme_color_override("font_color", Color(0.89, 0.99, 0.97))
+	button.add_theme_color_override("font_hover_color", Color.WHITE)
+	button.add_theme_color_override("font_pressed_color", Color.WHITE)
+	button.add_theme_stylebox_override("normal", _style(Color(0.065, 0.13, 0.18, 0.94),
+		Color(0.14, 0.43, 0.44), 15))
+	button.add_theme_stylebox_override("hover", _style(Color(0.12, 0.33, 0.35, 0.98),
+		Color(0.20, 0.91, 0.72), 15))
+	button.add_theme_stylebox_override("pressed", _style(Color(0.09, 0.49, 0.38, 1.0),
+		Color(0.34, 1.0, 0.72), 15))
+	button.add_theme_stylebox_override("disabled", _style(Color(0.10, 0.11, 0.16, 0.82),
+		Color(0.20, 0.23, 0.28), 15))
+	parent.add_child(button)
+	button.pressed.connect(action)
+	return button
+
+func _make_label(value: String, parent: Control, size: int,
+		color := Color.WHITE) -> Label:
+	var label := Label.new()
+	label.text = value
+	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_color_override("font_shadow_color", Color(0.005, 0.025, 0.035, 0.65))
+	label.add_theme_constant_override("shadow_offset_x", 2)
+	label.add_theme_constant_override("shadow_offset_y", 2)
+	parent.add_child(label)
+	return label
+
+func _make_panel(parent: Control, name: String,
+		color: Color, border: Color, radius := 20) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.name = name
+	panel.add_theme_stylebox_override("panel", _style(color, border, radius))
+	parent.add_child(panel)
+	return panel
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
+	layer.name = "Mobile HUD / large safe-area controls"
 	add_child(layer)
 	_hud = Control.new()
+	_hud.name = "Landscape HUD"
+	layer.add_child(_hud)
 	_hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(_hud)
-	_stats = Label.new()
-	_stats.position = Vector2(22, 14)
-	_stats.add_theme_font_size_override("font_size", 21)
-	_hud.add_child(_stats)
-	_quest = Label.new()
-	_quest.position = Vector2(22, 89)
-	_quest.add_theme_font_size_override("font_size", 20)
-	_hud.add_child(_quest)
-	_message = Label.new()
-	_message.anchor_left = 0.27
-	_message.anchor_right = 0.77
-	_message.anchor_top = 0.19
-	_message.anchor_bottom = 0.19
-	_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_message.add_theme_font_size_override("font_size", 22)
-	_hud.add_child(_message)
+
+	var info := _make_panel(_hud, "Organism telemetry", Color(0.035, 0.065, 0.105, 0.88),
+		Color(0.16, 0.49, 0.48, 0.80))
+	info.position = Vector2(24, 20)
+	info.custom_minimum_size = Vector2(500, 160)
+	var info_margin := MarginContainer.new()
+	info_margin.add_theme_constant_override("margin_left", 12)
+	info_margin.add_theme_constant_override("margin_right", 12)
+	info_margin.add_theme_constant_override("margin_top", 6)
+	info_margin.add_theme_constant_override("margin_bottom", 6)
+	info.add_child(info_margin)
+	var info_stack := VBoxContainer.new()
+	info_stack.add_theme_constant_override("separation", 3)
+	info_margin.add_child(info_stack)
+	_stats = _make_label("", info_stack, 26, Color(0.94, 1.0, 0.95))
+	_health_bar = ProgressBar.new()
+	_health_bar.custom_minimum_size = Vector2(450, 18)
+	_health_bar.show_percentage = false
+	_health_bar.add_theme_stylebox_override("background",
+		_style(Color(0.14, 0.17, 0.24, 0.96), Color(0.15, 0.21, 0.27), 7))
+	_health_bar.add_theme_stylebox_override("fill",
+		_style(Color(0.19, 0.93, 0.67), Color(0.19, 0.93, 0.67), 7))
+	info_stack.add_child(_health_bar)
+	_cargo_bar = ProgressBar.new()
+	_cargo_bar.custom_minimum_size = Vector2(450, 12)
+	_cargo_bar.show_percentage = false
+	_cargo_bar.add_theme_stylebox_override("background",
+		_style(Color(0.15, 0.17, 0.25, 0.96), Color(0.16, 0.21, 0.28), 6))
+	_cargo_bar.add_theme_stylebox_override("fill",
+		_style(Color(0.67, 0.42, 0.94), Color(0.67, 0.42, 0.94), 6))
+	info_stack.add_child(_cargo_bar)
+	_quest = _make_label("", info_stack, 20, Color(0.73, 0.93, 0.88))
+
 	var top := HBoxContainer.new()
+	top.name = "Primary actions"
 	top.anchor_left = 1.0
 	top.anchor_right = 1.0
-	top.offset_left = -275
-	top.offset_right = -20
-	top.offset_top = 18
-	top.offset_bottom = 67
+	top.offset_left = -374
+	top.offset_right = -22
+	top.offset_top = 26
+	top.offset_bottom = 96
+	top.add_theme_constant_override("separation", 10)
 	_hud.add_child(top)
-	_make_button("База", top, _open_shop)
-	_make_button("Пауза", top, _toggle_pause)
-	_stick_base = ColorRect.new()
-	_stick_base.color = Color(0.10, 0.20, 0.22, 0.78)
+	var home := _make_button("БАЗА", top, _open_shop)
+	home.custom_minimum_size = Vector2(162, 66)
+	var pause := _make_button("ПАУЗА", top, _toggle_pause)
+	pause.custom_minimum_size = Vector2(160, 66)
+
+	_zone_label = _make_label("ЗОНА 01  /  ТИХИЙ СЕКТОР", _hud, 22,
+		Color(0.36, 0.96, 0.78))
+	_zone_label.anchor_left = 0.70
+	_zone_label.anchor_right = 0.99
+	_zone_label.offset_left = 0
+	_zone_label.offset_right = 0
+	_zone_label.offset_top = 102
+	_zone_label.offset_bottom = 137
+	_zone_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+	var toast_panel := _make_panel(_hud, "Signal notification",
+		Color(0.02, 0.08, 0.12, 0.92), Color(0.27, 0.76, 0.64), 14)
+	toast_panel.anchor_left = 0.31
+	toast_panel.anchor_right = 0.69
+	toast_panel.anchor_top = 0.23
+	toast_panel.anchor_bottom = 0.23
+	toast_panel.offset_top = -22
+	toast_panel.offset_bottom = 44
+	_message = _make_label("", toast_panel, 24, Color(0.94, 1.0, 0.90))
+	_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	toast_panel.visible = false
+
+	_stick_base = Panel.new()
+	_stick_base.name = "Analog membrane joystick"
 	_stick_base.anchor_top = 1.0
 	_stick_base.anchor_bottom = 1.0
-	_stick_base.offset_left = 35
-	_stick_base.offset_right = 215
-	_stick_base.offset_top = -216
-	_stick_base.offset_bottom = -36
+	_stick_base.offset_left = 30
+	_stick_base.offset_right = 228
+	_stick_base.offset_top = -244
+	_stick_base.offset_bottom = -46
+	_stick_base.add_theme_stylebox_override("panel",
+		_style(Color(0.06, 0.19, 0.22, 0.57), Color(0.23, 0.74, 0.62, 0.68), 105))
 	_hud.add_child(_stick_base)
-	_stick_knob = ColorRect.new()
-	_stick_knob.color = Color(0.25, 0.82, 0.58, 0.9)
-	_stick_knob.size = Vector2(40, 40)
-	_stick_knob.position = Vector2(70, 70)
+	_stick_knob = Panel.new()
+	_stick_knob.name = "Move anchor"
+	_stick_knob.size = Vector2(60, 60)
+	_stick_knob.position = Vector2(69, 69)
 	_stick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stick_knob.add_theme_stylebox_override("panel",
+		_style(Color(0.23, 0.88, 0.67, 0.90), Color(0.86, 1.0, 0.85), 36))
 	_stick_base.add_child(_stick_knob)
+
 	var abilities := VBoxContainer.new()
+	abilities.name = "Three survival mutations"
 	abilities.anchor_left = 1.0
 	abilities.anchor_right = 1.0
 	abilities.anchor_top = 1.0
 	abilities.anchor_bottom = 1.0
-	abilities.offset_left = -240
+	abilities.offset_left = -271
 	abilities.offset_right = -24
-	abilities.offset_top = -262
-	abilities.offset_bottom = -30
+	abilities.offset_top = -287
+	abilities.offset_bottom = -40
+	abilities.add_theme_constant_override("separation", 9)
 	_hud.add_child(abilities)
 	for id in ["AB-PULL", "AB-MOVE", "AB-DAMAGE"]:
-		_skill_buttons[id] = _make_button(id, abilities, _use_ability.bind(id))
-	var reward := Button.new()
-	reward.text = "Нагорода"
-	reward.anchor_left = 0.49
-	reward.anchor_right = 0.65
-	reward.anchor_top = 1.0
-	reward.anchor_bottom = 1.0
-	reward.offset_top = -65
-	reward.offset_bottom = -18
-	_hud.add_child(reward)
-	reward.pressed.connect(_claim_quest)
-	_shop = PanelContainer.new()
+		var b := _make_button(id, abilities, _use_ability.bind(id))
+		b.custom_minimum_size = Vector2(238, 70)
+		b.add_theme_font_size_override("font_size", 21)
+		_skill_buttons[id] = b
+
+	_reward_button = _make_button("НАГОРОДА", _hud, _claim_quest)
+	_reward_button.anchor_left = 0.45
+	_reward_button.anchor_right = 0.61
+	_reward_button.anchor_top = 1.0
+	_reward_button.anchor_bottom = 1.0
+	_reward_button.offset_top = -105
+	_reward_button.offset_bottom = -43
+
+	_overlay_scrim = ColorRect.new()
+	_overlay_scrim.name = "Dim world behind pause or mutation screen"
+	_overlay_scrim.color = Color(0.008, 0.014, 0.027, 0.78)
+	_overlay_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_hud.add_child(_overlay_scrim)
+	_overlay_scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_overlay_scrim.visible = false
+
+	_shop = _make_panel(_hud, "Evolution and pause",
+		Color(0.025, 0.054, 0.095, 0.985), Color(0.22, 0.82, 0.66), 26)
 	_shop.anchor_left = 0.5
 	_shop.anchor_right = 0.5
 	_shop.anchor_top = 0.5
 	_shop.anchor_bottom = 0.5
-	_shop.offset_left = -330
-	_shop.offset_right = 330
-	_shop.offset_top = -300
-	_shop.offset_bottom = 300
-	_hud.add_child(_shop)
-	var content := VBoxContainer.new()
-	_shop.add_child(content)
-	var heading := Label.new()
-	heading.text = "Лабораторія адаптацій"
+	_shop.offset_left = -440
+	_shop.offset_right = 440
+	_shop.offset_top = -318
+	_shop.offset_bottom = 318
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(826, 575)
+	_shop.add_child(scroll)
+	var holder := VBoxContainer.new()
+	holder.custom_minimum_size = Vector2(810, 0)
+	holder.add_theme_constant_override("separation", 14)
+	scroll.add_child(holder)
+	_shop_content = VBoxContainer.new()
+	_shop_content.add_theme_constant_override("separation", 13)
+	holder.add_child(_shop_content)
+	var heading := _make_label("ГЕНОМНА ЛАБОРАТОРІЯ", _shop_content, 31,
+		Color(0.33, 1.0, 0.79))
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	heading.add_theme_font_size_override("font_size", 24)
-	content.add_child(heading)
+	_shop_balance = _make_label("", _shop_content, 24, Color(0.91, 0.96, 1.0))
+	_shop_balance.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var upgrade_grid := GridContainer.new()
 	upgrade_grid.columns = 2
-	content.add_child(upgrade_grid)
+	upgrade_grid.add_theme_constant_override("h_separation", 12)
+	upgrade_grid.add_theme_constant_override("v_separation", 10)
+	_shop_content.add_child(upgrade_grid)
 	for i in range(6):
 		var b := _make_button("", upgrade_grid, _buy_upgrade.bind(i))
-		b.custom_minimum_size = Vector2(305, 42)
+		b.custom_minimum_size = Vector2(393, 62)
 		_shop_buttons.append(b)
-	_relay_button = _make_button("", content, _buy_relay)
-	_make_button("Відкрити: Ривок", content, _unlock.bind("AB-MOVE"))
-	_make_button("Відкрити: Сильний удар", content, _unlock.bind("AB-DAMAGE"))
-	_make_button("Отримати нагороду завдання", content, _claim_quest)
-	_make_button("Продовжити", content, _close_panel)
+	_relay_button = _make_button("ОРГАНІЧНЕ РЕЛЕ", _shop_content, _buy_relay)
+	_relay_button.custom_minimum_size.y = 62
+	var unlocks := HBoxContainer.new()
+	unlocks.add_theme_constant_override("separation", 12)
+	_shop_content.add_child(unlocks)
+	var move_btn := _make_button("РИВОК · 35", unlocks, _unlock.bind("AB-MOVE"))
+	move_btn.custom_minimum_size = Vector2(393, 65)
+	var damage_btn := _make_button("ІМПУЛЬС · 80", unlocks, _unlock.bind("AB-DAMAGE"))
+	damage_btn.custom_minimum_size = Vector2(393, 65)
+	_make_button("ОТРИМАТИ НАГОРОДУ ЗА ЗАВДАННЯ", _shop_content, _claim_quest)
+	_make_button("ПОВЕРНУТИСЯ ДО ЕКСПЕДИЦІЇ", _shop_content, _close_panel)
+
+	_pause_content = VBoxContainer.new()
+	_pause_content.add_theme_constant_override("separation", 32)
+	holder.add_child(_pause_content)
+	var pause_heading := _make_label("ПАУЗА", _pause_content, 40, Color(0.33, 1.0, 0.79))
+	pause_heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var pause_description := _make_label(
+		"Дослідження призупинене.\nВідкритий світ зберігає твій прогрес.", _pause_content, 26)
+	pause_description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_make_button("ПРОДОВЖИТИ", _pause_content, _close_panel)
 	_shop.visible = false
 	_update_hud()
 
 func _update_hud() -> void:
 	if not is_instance_valid(player) or not _stats:
 		return
-	var lvl: int = Rules.level(profile)
-	_stats.text = "HP %d/%d  Геном %d  Рівень %d\nВантаж %d/%d  Реле %d/2" % [
-		ceili(float(profile["health"])), int(Rules.maximum_health(profile)), int(profile["bank"]), lvl,
-		int(profile["cargo_units"]), Rules.capacity(profile), int(profile["relay_level"])
+	var level: int = Rules.level(profile)
+	var bank: int = int(profile["bank"])
+	var units: int = int(profile["cargo_units"])
+	var capacity: int = Rules.capacity(profile)
+	_stats.text = "ГЕНОМ %d   •   РІВЕНЬ %d    •   HP %d/%d" % [
+		bank, level, ceili(float(profile["health"])), int(Rules.maximum_health(profile))
 	]
+	_health_bar.max_value = Rules.maximum_health(profile)
+	_health_bar.value = float(profile["health"])
+	_cargo_bar.max_value = capacity
+	_cargo_bar.value = units
 	var stage: int = int(profile["quest_stage"])
-	_quest.text = "%s  %d/%d" % [
-		QUEST_NAMES[stage] if stage < QUEST_NAMES.size() else "Досліджуй світ",
-		Rules.quest_progress(profile), Rules.QUEST_GOALS[stage] if stage < 5 else 0
-	]
+	_quest.text = ("ЗАВДАННЯ: %s   %d/%d" % [
+		QUEST_NAMES[stage], mini(Rules.quest_progress(profile), Rules.QUEST_GOALS[stage]),
+		Rules.QUEST_GOALS[stage]
+	]) if stage < QUEST_NAMES.size() else "ЗАВДАННЯ ВИКОНАНІ · ДОСЛІДЖУЙ СВІТ"
+	var current_sector := _zone_at(player.global_position)
+	var zone_titles := ["ТИХИЙ БІОМ", "КРИСТАЛИ", "РЕАКТОР"]
+	_zone_label.text = "ЗОНА %02d · %s" % [current_sector + 1, zone_titles[current_sector]]
+	var names := {"AB-PULL":"ХВАТКА", "AB-MOVE":"РИВОК", "AB-DAMAGE":"ІМПУЛЬС"}
 	for id in _skill_buttons.keys():
-		var cooldown: float = float(profile["cooldowns"][id])
-		_skill_buttons[id].text = "%s  %s" % [id,
-			("%.1f с" % cooldown) if cooldown > 0.0 else ("OK" if profile["abilities"].has(id) else "Заблоковано")]
+		var cd: float = float(profile["cooldowns"].get(id, 0.0))
+		var owned: bool = profile["abilities"].has(id)
+		_skill_buttons[id].text = "%s    %s" % [
+			names[id], ("%.1fс" % cd) if cd > 0.0 else ("OK" if owned else "ЗАМОК")
+		]
+		_skill_buttons[id].disabled = cd > 0.0 or _paused
 	for i in range(_shop_buttons.size()):
-		var price := Rules.upgrade_price(profile, i)
-		_shop_buttons[i].text = "%s %d  •  %d" % [UPGRADE_NAMES[i], int(profile["upgrades"][i]), price]
-	if _relay_button:
-		_relay_button.text = "Органічне реле: %d/2  •  %d" % [
-			int(profile["relay_level"]), Rules.relay_price(profile)]
-	if _message and Time.get_ticks_msec() / 1000.0 > _toast_until:
-		_message.text = ""
+		var current_level: int = int(profile["upgrades"][i])
+		var limit: int = 2 if i == 4 else 20
+		var locked: bool = i in [3, 4] and level < 2
+		var price: int = Rules.upgrade_price(profile, i)
+		_shop_buttons[i].text = "%s  %d/%d    •    %s" % [
+			UPGRADE_NAMES[i].to_upper(), current_level, limit,
+			"РІВЕНЬ 2" if locked else ("МАКС." if current_level >= limit else str(price))
+		]
+		_shop_buttons[i].disabled = locked or current_level >= limit or bank < price
+	_relay_button.text = "ОРГАНІЧНЕ РЕЛЕ %d/2   •   %s" % [
+		int(profile["relay_level"]),
+		"РІВЕНЬ 2" if level < 2 else ("МАКС." if int(profile["relay_level"]) >= 2 else str(Rules.relay_price(profile)))
+	]
+	_relay_button.disabled = level < 2 or int(profile["relay_level"]) >= 2 or bank < Rules.relay_price(profile)
+	_shop_balance.text = "ДОСТУПНИЙ ГЕНОМ: %d     |     ВАНТАЖ: %d/%d" % [bank, units, capacity]
+	_reward_button.disabled = not _inside_base() or stage >= QUEST_NAMES.size() or Rules.quest_progress(profile) < Rules.QUEST_GOALS[stage]
+	_overlay_scrim.visible = _paused
+	_shop.visible = _paused
+	_shop_content.visible = _shop_open
+	_pause_content.visible = not _shop_open
+	if _message:
+		if Time.get_ticks_msec() / 1000.0 > _toast_until:
+			_message.text = ""
+		_message.get_parent().visible = not _message.text.is_empty()
+
+## Render real frames in CI with Xvfb. Not a substitute for touch/device playtest.
+func _capture_qa() -> void:
+	var root_path := ProjectSettings.globalize_path("res://").trim_suffix("/").get_base_dir()
+	var output := root_path.path_join("qa/screenshots")
+	if DirAccess.make_dir_recursive_absolute(output) != OK:
+		push_error("QA screenshots directory unavailable: " + output)
+		get_tree().quit(2)
+		return
+	await get_tree().create_timer(1.0).timeout
+	await RenderingServer.frame_post_draw
+	_write_qa_frame(output, "01-organism-base.png")
+	player.global_position = Vector3(-1.0, 0.62, 4.0)
+	player.reset_contacts()
+	await get_tree().create_timer(0.6).timeout
+	await RenderingServer.frame_post_draw
+	_write_qa_frame(output, "02-synaptic-sector.png")
+	player.global_position = Vector3(22.0, 0.62, 12.0)
+	profile["biomass"] = 480
+	player.evolve(Rules.level(profile), profile["upgrades"])
+	player.reset_contacts()
+	await get_tree().create_timer(0.6).timeout
+	await RenderingServer.frame_post_draw
+	_write_qa_frame(output, "03-reactor-warden.png")
+	player.global_position = SAFE_POINT
+	player.reset_contacts()
+	await get_tree().create_timer(0.4).timeout
+	_open_shop()
+	await RenderingServer.frame_post_draw
+	_write_qa_frame(output, "04-evolution-shop.png")
+	print("QA capture completed: four rendered frames")
+	get_tree().quit(0)
+
+func _write_qa_frame(directory: String, name: String) -> void:
+	var image: Image = get_viewport().get_texture().get_image()
+	var destination := directory.path_join(name)
+	var err := image.save_png(destination)
+	if err == OK:
+		print("QA FRAME ", destination, "  ", image.get_width(), "x", image.get_height())
+	else:
+		push_error("Could not write frame: " + destination + " err=" + str(err))

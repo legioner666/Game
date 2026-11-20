@@ -1,0 +1,66 @@
+name: Parasite Evolution — rendered scene review
+
+on:
+  push:
+    branches: ["gpt/**"]
+    paths:
+      - 'godot/**'
+      - '.github/workflows/visual-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: chickensoft-games/setup-godot@v2
+        with:
+          version: '4.4.1'
+          use-dotnet: false
+      - name: Install software renderer and virtual display
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglu1-mesa
+      - name: Import project
+        run: godot --headless --path godot --import
+      - name: Capture four real scenes through Godot renderer
+        run: |
+          set -euo pipefail
+          mkdir -p qa/screenshots
+          timeout 55s xvfb-run -a -s '-screen 0 1280x720x24' \
+            godot --path godot --rendering-method gl_compatibility \
+            --resolution 1280x720 -- --capture-qa 2>&1 | tee qa/visual.log
+          for name in 01-organism-base 02-synaptic-sector 03-reactor-warden 04-evolution-shop; do
+            test -s "qa/screenshots/$name.png"
+          done
+          if grep -E 'SCRIPT ERROR|Parse Error|Invalid call|Failed to load script' qa/visual.log; then
+            exit 1
+          fi
+          file qa/screenshots/*.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Parasite-visual-qa-frames
+          path: qa/screenshots/*.png
+          retention-days: 14
+          if-no-files-found: error
+      - name: Publish raw screenshots to review branch
+        if: github.event_name == 'push'
+        run: |
+          git config user.name 'parasite-visual-qa[bot]'
+          git config user.email 'parasite-visual-qa[bot]@users.noreply.github.com'
+          git add qa/screenshots/*.png
+          git fetch origin "$GITHUB_REF_NAME"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$(git rev-parse HEAD)" ]; then
+            echo 'Branch advanced during rendering; snapshots remain in artifact, newer run will publish.'
+            exit 0
+          fi
+          if ! git diff --cached --quiet; then
+            git commit -m "test: capture rendered Godot visual QA frames [skip ci]"
+            git push origin HEAD:"$GITHUB_REF_NAME"
+          fi
