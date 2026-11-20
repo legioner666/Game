@@ -39,6 +39,7 @@ var _skill_buttons: Dictionary = {}
 var _shop_buttons: Array[Button] = []
 var _relay_button: Button
 var _shop: PanelContainer
+var _overlay_scrim: ColorRect
 var _paused := false
 var _shop_open := false
 var _save_disabled := false
@@ -66,7 +67,7 @@ func _ready() -> void:
 	player.global_position = Vector3(float(profile["x"]), SAFE_POINT.y, float(profile["z"]))
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 13.7
+	camera.size = 13.0
 	camera.current = true
 	camera.near = 0.1
 	camera.far = 120.0
@@ -366,7 +367,7 @@ func _nearest(radius: float) -> Dictionary:
 	return chosen
 
 func _camera_update(delta: float) -> void:
-	var target := player.global_position + Vector3(0, 14.8, -10.8)
+	var target := player.global_position + Vector3(0, 11.3, -15.2)
 	camera.global_position = target if delta >= 1.0 else camera.global_position.lerp(target, 1.0 - exp(-7.0 * delta))
 	camera.look_at(player.global_position + Vector3.UP * 0.3, Vector3.UP)
 
@@ -652,12 +653,13 @@ func _build_ui() -> void:
 
 	_zone_label = _make_label("ЗОНА 01  /  ТИХИЙ СЕКТОР", _hud, 22,
 		Color(0.36, 0.96, 0.78))
-	_zone_label.anchor_left = 0.49
-	_zone_label.anchor_right = 0.75
-	_zone_label.offset_left = -150
+	_zone_label.anchor_left = 0.70
+	_zone_label.anchor_right = 0.99
+	_zone_label.offset_left = 0
 	_zone_label.offset_right = 0
-	_zone_label.offset_top = 28
-	_zone_label.offset_bottom = 65
+	_zone_label.offset_top = 102
+	_zone_label.offset_bottom = 137
+	_zone_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 	var toast_panel := _make_panel(_hud, "Signal notification",
 		Color(0.02, 0.08, 0.12, 0.92), Color(0.27, 0.76, 0.64), 14)
@@ -697,15 +699,16 @@ func _build_ui() -> void:
 	abilities.anchor_right = 1.0
 	abilities.anchor_top = 1.0
 	abilities.anchor_bottom = 1.0
-	abilities.offset_left = -245
-	abilities.offset_right = -26
+	abilities.offset_left = -271
+	abilities.offset_right = -24
 	abilities.offset_top = -287
 	abilities.offset_bottom = -40
 	abilities.add_theme_constant_override("separation", 9)
 	_hud.add_child(abilities)
 	for id in ["AB-PULL", "AB-MOVE", "AB-DAMAGE"]:
 		var b := _make_button(id, abilities, _use_ability.bind(id))
-		b.custom_minimum_size = Vector2(212, 70)
+		b.custom_minimum_size = Vector2(238, 70)
+		b.add_theme_font_size_override("font_size", 21)
 		_skill_buttons[id] = b
 
 	_reward_button = _make_button("НАГОРОДА", _hud, _claim_quest)
@@ -715,6 +718,14 @@ func _build_ui() -> void:
 	_reward_button.anchor_bottom = 1.0
 	_reward_button.offset_top = -105
 	_reward_button.offset_bottom = -43
+
+	_overlay_scrim = ColorRect.new()
+	_overlay_scrim.name = "Dim world behind pause or mutation screen"
+	_overlay_scrim.color = Color(0.008, 0.014, 0.027, 0.78)
+	_overlay_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_hud.add_child(_overlay_scrim)
+	_overlay_scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_overlay_scrim.visible = false
 
 	_shop = _make_panel(_hud, "Evolution and pause",
 		Color(0.025, 0.054, 0.095, 0.985), Color(0.22, 0.82, 0.66), 26)
@@ -795,13 +806,13 @@ func _update_hud() -> void:
 	]) if stage < QUEST_NAMES.size() else "ЗАВДАННЯ ВИКОНАНІ · ДОСЛІДЖУЙ СВІТ"
 	var current_sector := _zone_at(player.global_position)
 	var zone_titles := ["ТИХИЙ БІОМ", "СИНАПТИЧНИЙ КРИСТАЛ", "СЕРЦЕ РЕАКТОРА"]
-	_zone_label.text = "ЗОНА %02d   /   %s" % [current_sector + 1, zone_titles[current_sector]]
+	_zone_label.text = "ЗОНА %02d · %s" % [current_sector + 1, zone_titles[current_sector]]
 	var names := {"AB-PULL":"ХВАТКА", "AB-MOVE":"РИВОК", "AB-DAMAGE":"ІМПУЛЬС"}
 	for id in _skill_buttons.keys():
 		var cd: float = float(profile["cooldowns"].get(id, 0.0))
 		var owned: bool = profile["abilities"].has(id)
 		_skill_buttons[id].text = "%s    %s" % [
-			names[id], ("%.1f c" % cd) if cd > 0.0 else ("ГОТОВО" if owned else "ЗАКРИТО")
+			names[id], ("%.1fс" % cd) if cd > 0.0 else ("OK" if owned else "ЗАМОК")
 		]
 		_skill_buttons[id].disabled = cd > 0.0 or _paused
 	for i in range(_shop_buttons.size()):
@@ -821,6 +832,7 @@ func _update_hud() -> void:
 	_relay_button.disabled = level < 2 or int(profile["relay_level"]) >= 2 or bank < Rules.relay_price(profile)
 	_shop_balance.text = "ДОСТУПНИЙ ГЕНОМ: %d     |     ВАНТАЖ: %d/%d" % [bank, units, capacity]
 	_reward_button.disabled = not _inside_base() or stage >= QUEST_NAMES.size() or Rules.quest_progress(profile) < Rules.QUEST_GOALS[stage]
+	_overlay_scrim.visible = _paused
 	_shop.visible = _paused
 	_shop_content.visible = _shop_open
 	_pause_content.visible = not _shop_open
