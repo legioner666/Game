@@ -42,6 +42,7 @@ var _shop: PanelContainer
 var _paused := false
 var _shop_open := false
 var _save_disabled := false
+var _qa_mode := false
 var _safe_previous := false
 var _save_elapsed := 0.0
 var _hud_elapsed := 0.0
@@ -72,8 +73,8 @@ func _ready() -> void:
 	add_child(camera)
 	_camera_update(1.0)
 	_build_ui()
-	if OS.get_cmdline_user_args().has("--capture-qa"):
-		_save_disabled = true
+	_qa_mode = OS.get_cmdline_user_args().has("--capture-qa")
+	if _qa_mode:
 		_capture_qa.call_deferred()
 	_note("Рухайся, поглинай зразки та повертайся на базу.")
 	if _save_disabled:
@@ -393,7 +394,7 @@ func _load_profile() -> Dictionary:
 	return Rules.fresh()
 
 func _save_game() -> void:
-	if _save_disabled or not is_instance_valid(player):
+	if _save_disabled or _qa_mode or not is_instance_valid(player):
 		return
 	var next: Dictionary = profile.duplicate(true)
 	next["revision"] = int(next["revision"]) + 1
