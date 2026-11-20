@@ -65,6 +65,7 @@ func _ready() -> void:
 	player.name = "Amorphous Parasite"
 	add_child(player)
 	player.global_position = Vector3(float(profile["x"]), SAFE_POINT.y, float(profile["z"]))
+	player.evolve(Rules.level(profile), profile["upgrades"])
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.size = 13.0
@@ -284,9 +285,14 @@ func _damage_mob(mob: Dictionary, damage: float) -> void:
 	var units := _units(mob)
 	var value := 30 if mob["warden"] else 3 + int(mob["zone"]) * 2
 	var experience := 20 if mob["warden"] else 3 + int(mob["zone"])
+	var before_level: int = Rules.level(profile)
 	if not Rules.capture(profile, units, value, experience, mob["warden"]):
 		mob["hp"] = 1.0
 		return
+	if Rules.level(profile) > before_level:
+		player.evolve(Rules.level(profile), profile["upgrades"])
+		fx.shockwave(player.global_position)
+		_note("ЕВОЛЮЦІЯ! НОВИЙ РІВЕНЬ " + str(Rules.level(profile)))
 	mob["alive"] = false
 	fx.capture(mob["node"].global_position, bool(mob["warden"]))
 	player.absorb_flash()
@@ -496,6 +502,7 @@ func _buy_upgrade(index: int) -> void:
 	if not _shop_open or not _inside_base():
 		return
 	if Rules.buy_upgrade(profile, index):
+		player.evolve(Rules.level(profile), profile["upgrades"])
 		profile["health"] = minf(Rules.maximum_health(profile), float(profile["health"]) + (10.0 if index == 5 else 0.0))
 		_note("Мутацію придбано.")
 		_save_game()
@@ -858,6 +865,8 @@ func _capture_qa() -> void:
 	await RenderingServer.frame_post_draw
 	_write_qa_frame(output, "02-synaptic-sector.png")
 	player.global_position = Vector3(22.0, 0.62, 12.0)
+	profile["biomass"] = 480
+	player.evolve(Rules.level(profile), profile["upgrades"])
 	player.reset_contacts()
 	await get_tree().create_timer(0.6).timeout
 	await RenderingServer.frame_post_draw
