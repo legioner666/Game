@@ -153,6 +153,7 @@ func _spawn_mob(point: Vector3, zone: int, warden: bool) -> void:
 	add_child(creature)
 	creature.position = point
 	MobArt.create(creature, zone, warden)
+	var hp: float = 200.0 if warden else 24.0 + float(zone) * 18.0
 	mobs.append({
 		"node": creature, "home": point, "zone": zone, "warden": warden,
 		"hp": hp, "max_hp": hp, "alive": true, "respawn": 0.0, "pulled": 0.0,
