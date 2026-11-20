@@ -1,5 +1,6 @@
 # Parasite Evolution
 
+> **Стан QA (20.11.2026):** першій Android-збірці `v0.1.0-debug` **відмовлено в прийманні** за результатами відео гравця: слабка графіка, анімації та інтерфейс. Не завантажуйте її як готову гру. Переробка v0.2 проходить перевірку в [PR #2](https://github.com/legioner666/Game/pull/2), [скриншоти реального рендера](https://github.com/legioner666/Game/tree/gpt/parasite-rebuild-v02/qa/screenshots), а [прямий APK v0.2 (тільки для тестування на Android)](https://github.com/legioner666/Game/releases/download/parasite-v0.2.0-qa/parasite-evolution-debug.apk) позначений як QA-only. Тест на фізичному Android після переробки поки не підтверджено.\n\n
 Original 3D mobile action game about an amorphous slime organism with retractile organic tentacles.
 
 **Active engine:** Godot 4.4 (GDScript) in `godot/`.  
