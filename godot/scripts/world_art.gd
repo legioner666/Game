@@ -26,7 +26,7 @@ static func build(root: Node3D) -> void:
 		var hue: Color = SECTOR_COLORS[zone]
 		var light_mat := _mat(hue, 0.38, true)
 		var dark_mat := _mat(Color(0.065, 0.09, 0.14).lerp(hue, 0.07), 0.9)
-		_tiles(root, zone, floor_mat)
+		_paint_living_floor(root, zone)
 		_tracks(root, zone, light_mat, frame_mat)
 		for ix in range(4):
 			for iz in range(5):
@@ -44,6 +44,51 @@ static func build(root: Node3D) -> void:
 		_icon(root, Vector3(-23.0 + float(zone) * 23.0, 0.2, -19.0), zone, light_mat, frame_mat)
 	_base_decor(root)
 	_lighting(root)
+
+static func _paint_living_floor(root: Node3D, sector: int) -> void:
+	var floor: Node3D = root.get_node_or_null("Sector floor " + str(sector))
+	if floor == null:
+		return
+	var surface: MeshInstance3D = floor.get_child(0) as MeshInstance3D
+	if surface == null:
+		return
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode cull_back, diffuse_burley;
+uniform vec4 dark_floor : source_color = vec4(0.10, 0.16, 0.19, 1.0);
+uniform vec3 flow_color : source_color = vec3(0.13, 0.48, 0.40);
+uniform float seed = 0.0;
+float pattern(vec2 p) {
+	return sin(p.x * 8.7 + sin(p.y * 5.3 + seed) * 2.0)
+		* sin(p.y * 6.2 + sin(p.x * 3.4) * 1.9);
+}
+void fragment() {
+	vec2 p = UV * vec2(7.0, 11.0);
+	float vein = pattern(p + vec2(seed, TIME * 0.017));
+	float whorl = sin(p.x * 10.2 + p.y * 4.8 + 0.8 * sin(p.y * 2.1));
+	float network = smoothstep(0.72, 0.97, abs(vein)) * 0.26;
+	float islands = 0.09 * sin(p.x * 3.7 + p.y * 6.3) * sin(p.x * 6.1 - p.y * 1.9);
+	ALBEDO = dark_floor.rgb * (0.83 + 0.14 * whorl + islands);
+	ALBEDO += flow_color * network;
+	ROUGHNESS = 0.88;
+	METALLIC = 0.02;
+	EMISSION = flow_color * network * 0.13;
+}
+"""
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	var palettes := [
+		Color(0.09, 0.18, 0.19), Color(0.14, 0.13, 0.24), Color(0.20, 0.11, 0.16)
+	]
+	var pigments := [
+		Color(0.15, 0.55, 0.42), Color(0.26, 0.33, 0.67), Color(0.68, 0.19, 0.32)
+	]
+	material.set_shader_parameter("dark_floor", palettes[sector])
+	material.set_shader_parameter("flow_color", Vector3(pigments[sector].r,
+		pigments[sector].g, pigments[sector].b))
+	material.set_shader_parameter("seed", float(sector) * 1.7)
+	surface.material_override = material
 
 static func _mat(color: Color, roughness: float, emissive := false) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
