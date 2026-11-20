@@ -3,7 +3,10 @@ extends Node3D
 ## Distinct from the Crown Rush Godot project in a different repository.
 
 const Rules = preload("res://scripts/economy.gd")
-const Slime = preload("res://scripts/slime.gd")
+const Slime = preload("res://scripts/slime_v2.gd")
+const Art = preload("res://scripts/world_art.gd")
+const MobArt = preload("res://scripts/enemy_art.gd")
+const Effects = preload("res://scripts/effects.gd")
 const SAVE := "user://parasite-evolution-v1.json"
 const SAFE_POINT := Vector3(-22.0, 0.62, -10.0)
 const SAFE_RADIUS := 5.0
@@ -19,6 +22,7 @@ const ZONE_COLORS := [
 var profile: Dictionary
 var player: CharacterBody3D
 var camera: Camera3D
+var fx: Node3D
 var mobs: Array[Dictionary] = []
 var _hud: Control
 var _stats: Label
@@ -44,13 +48,17 @@ var _last_heading := Vector3.FORWARD
 func _ready() -> void:
 	profile = _load_profile()
 	_build_world()
+	Art.build(self)
+	fx = Effects.new()
+	fx.name = "Capture, attack and absorption effects"
+	add_child(fx)
 	player = Slime.new()
 	player.name = "Amorphous Parasite"
 	add_child(player)
 	player.global_position = Vector3(float(profile["x"]), SAFE_POINT.y, float(profile["z"]))
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 20.5
+	camera.size = 13.7
 	camera.current = true
 	camera.near = 0.1
 	camera.far = 120.0
@@ -124,25 +132,24 @@ func _build_world() -> void:
 	_spawn_mob(Vector3(27, 0.75, 15), 2, true)
 
 func _spawn_mob(point: Vector3, zone: int, warden: bool) -> void:
-	var creature := Node3D.new()
+	var creature := CharacterBody3D.new()
+	creature.collision_layer = 4
+	creature.collision_mask = 1
+	var collider := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.8 if warden else 0.42
+	capsule.height = 2.2 if warden else 1.25
+	collider.shape = capsule
+	collider.position.y = 0.45 if warden else 0.09
+	creature.add_child(collider)
 	creature.name = "Warden" if warden else "Specimen %s" % str(mobs.size())
 	add_child(creature)
 	creature.position = point
-	var shell := MeshInstance3D.new()
-	var mesh := CapsuleMesh.new()
-	mesh.radius = 0.85 if warden else 0.35
-	mesh.height = 2.5 if warden else 1.1
-	shell.mesh = mesh
-	shell.position.y = 0.65 if warden else 0.25
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.69, 0.24, 0.16) if warden else Color(0.25, 0.57, 0.61)
-	shell.material_override = mat
-	creature.add_child(shell)
-	var hp: float = 200.0 if warden else 24.0 + float(zone) * 18.0
+	MobArt.create(creature, zone, warden)
 	mobs.append({
 		"node": creature, "home": point, "zone": zone, "warden": warden,
 		"hp": hp, "max_hp": hp, "alive": true, "respawn": 0.0, "pulled": 0.0,
-		"attack": 0.0, "warning": 0.0
+		"attack": 0.0, "warning": 0.0, "stomp": point
 	})
 
 func _physics_process(delta: float) -> void:
@@ -195,14 +202,17 @@ func _update_enemies(delta: float, safe: bool) -> void:
 				mob["alive"] = true
 				mob["hp"] = mob["max_hp"]
 				node.visible = true
+				(node as CharacterBody3D).collision_layer = 4
 			continue
 		mob["attack"] = maxf(0.0, float(mob["attack"]) - delta)
 		mob["pulled"] = maxf(0.0, float(mob["pulled"]) - delta)
 		var distance := node.global_position.distance_to(player.global_position)
 		if mob["warning"] > 0.0:
 			mob["warning"] -= delta
-			if mob["warning"] <= 0.0 and distance < 3.0 and not safe:
-				_hurt(15.0)
+			if mob["warning"] <= 0.0:
+				fx.hit(mob["stomp"], true)
+				if not safe and player.global_position.distance_to(mob["stomp"]) < 3.0:
+					_hurt(15.0)
 			continue
 		var destination: Vector3 = mob["home"]
 		if mob["pulled"] > 0.0 and not safe:
@@ -215,7 +225,9 @@ func _update_enemies(delta: float, safe: bool) -> void:
 				mob["attack"] = 3.0 if mob["warden"] else 1.5
 				if mob["warden"]:
 					mob["warning"] = 0.85
-					_note("Наглядач готує удар!")
+					mob["stomp"] = player.global_position
+					fx.telegraph(player.global_position)
+					_note("Наглядач готує удар — ухиляйся!")
 				else:
 					_hurt(4.0 + float(mob["zone"]) * 2.0)
 		var movement: Vector3 = destination - node.global_position
@@ -225,7 +237,7 @@ func _update_enemies(delta: float, safe: bool) -> void:
 			var step := movement.limit_length(velocity * delta)
 			var candidate := node.global_position + step
 			if _zone_at(candidate) == mob["zone"] and not _inside_base(candidate):
-				node.global_position = candidate
+				(node as CharacterBody3D).move_and_collide(step)
 		if mob["warden"]:
 			node.rotation.y += delta * 0.4
 
@@ -263,7 +275,10 @@ func _damage_mob(mob: Dictionary, damage: float) -> void:
 		mob["hp"] = 1.0
 		return
 	mob["alive"] = false
+	fx.capture(mob["node"].global_position, bool(mob["warden"]))
+	player.absorb_flash()
 	mob["node"].visible = false
+	(mob["node"] as CharacterBody3D).collision_layer = 0
 	mob["respawn"] = 90.0 if mob["warden"] else 25.0
 	if int(profile["cargo_units"]) == Rules.capacity(profile):
 		_note("Вантаж заповнений. Повернися на базу.")
@@ -282,6 +297,8 @@ func _zone_at(point: Vector3) -> int:
 func _hurt(value: float) -> void:
 	if _inside_base() or value <= 0.0:
 		return
+	player.flash_hit()
+	fx.hit(player.global_position)
 	profile["health"] = maxf(0.0, float(profile["health"]) - value)
 	if profile["health"] <= 0.0:
 		var serial: int = int(profile["death_serial"]) + 1
@@ -313,6 +330,7 @@ func _use_ability(id: String) -> void:
 		profile["cooldowns"][id] = 4.0
 	elif id == "AB-DAMAGE":
 		var inflicted := 0
+		fx.shockwave(player.global_position)
 		for mob in mobs:
 			if mob["alive"] and mob["node"].global_position.distance_to(player.global_position) < 4.5:
 				_damage_mob(mob, 38.0)
@@ -336,7 +354,7 @@ func _nearest(radius: float) -> Dictionary:
 	return chosen
 
 func _camera_update(delta: float) -> void:
-	var target := player.global_position + Vector3(0, 19, -14)
+	var target := player.global_position + Vector3(0, 14.8, -10.8)
 	camera.global_position = target if delta >= 1.0 else camera.global_position.lerp(target, 1.0 - exp(-7.0 * delta))
 	camera.look_at(player.global_position + Vector3.UP * 0.3, Vector3.UP)
 
