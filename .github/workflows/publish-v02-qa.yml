@@ -1,0 +1,46 @@
+name: Parasite Evolution v0.2 direct APK — device QA only
+
+on:
+  push:
+    branches: ["gpt/parasite-rebuild-v02"]
+    paths:
+      - '.github/workflows/publish-v02-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-qa-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_RUN: '44684157722'
+      TAG: 'parasite-v0.2.0-qa'
+    steps:
+      - name: Recover verified debug APK from successful branch CI
+        run: |
+          set -euo pipefail
+          mkdir -p qa-build
+          gh run download "$SOURCE_RUN" --repo "$GH_REPO" \
+            --name Parasite-Evolution-Godot-Android-debug --dir qa-build
+          test -s qa-build/parasite-evolution-debug.apk
+          file qa-build/parasite-evolution-debug.apk
+          sha256sum qa-build/parasite-evolution-debug.apk
+      - name: Publish clearly labeled pre-release for Android player test
+        run: |
+          set -euo pipefail
+          NOTES='UNVERIFIED Android device playtest build. NOT production, Play Store, or final visual quality. Engine Godot 4.4.1, 10 organic tentacles, biome shaders, input HUD, three mutation stages, encounter and economy smoke tests. CI build: https://github.com/legioner666/Game/actions/runs/44684157722 . Requires manual Android installation and feedback on rendering, FPS, UI, gameplay. Does not disable Google Play Protect. Preview APK may require uninstalling prior ephemeral debug-signed version first.'
+          if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" qa-build/parasite-evolution-debug.apk \
+              --repo "$GH_REPO" --clobber
+          else
+            gh release create "$TAG" qa-build/parasite-evolution-debug.apk \
+              --repo "$GH_REPO" --target "$GITHUB_SHA" --prerelease \
+              --title 'Parasite Evolution v0.2 — DEVICE QA ONLY' --notes "$NOTES"
+          fi
+          gh release view "$TAG" --repo "$GH_REPO" \
+            --json assets --jq '.assets[] | select(.name == "parasite-evolution-debug.apk") | {name: .name, size: .size, url: .url}'
