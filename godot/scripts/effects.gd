@@ -20,6 +20,9 @@ func hit(at: Vector3, warden := false) -> void:
 	_ring(at, Color(1.0, 0.36, 0.22), 0.2, 2.0 if warden else 1.1, 0.45)
 	_sparks(at, 8 if warden else 4, Color(1.0, 0.63, 0.22))
 
+func telegraph(at: Vector3) -> void:
+	_ring(at, Color(1.0, 0.21, 0.18), 0.28, 3.0, 0.85)
+
 func shockwave(at: Vector3) -> void:
 	_ring(at, Color(0.76, 0.32, 1.0), 0.25, 5.0, 0.45)
 	_sparks(at, 14, Color(0.74, 0.49, 1.0))
