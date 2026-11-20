@@ -54,20 +54,20 @@ func _ready() -> void:
 	surface.code = """
 shader_type spatial;
 render_mode cull_back, diffuse_burley, specular_schlick_ggx;
-uniform vec4 body_color : source_color = vec4(0.065, 0.044, 0.13, 1.0);
+uniform vec4 body_color : source_color = vec4(0.065, 0.029, 0.098, 1.0);
 uniform vec3 bioluminescence : source_color = vec3(0.07, 0.63, 0.51);
 uniform float pulse = 0.0;
 void vertex() {
 	float ripple = sin(TIME * 2.0 + VERTEX.x * 4.1 + VERTEX.z * 3.3);
-	VERTEX.xyz += NORMAL * (0.015 + 0.022 * ripple);
+	VERTEX.xyz += NORMAL * (0.017 + 0.027 * ripple);
 }
 void fragment() {
 	float pattern = sin(UV.x * 18.0 + UV.y * 7.0 + 0.55 * sin(TIME + UV.y * 12.0));
 	ALBEDO = body_color.rgb * (0.94 + 0.13 * pattern);
-	ROUGHNESS = 0.31;
-	METALLIC = 0.10;
-	float edge = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
-	EMISSION = bioluminescence * (edge * 0.40 + pulse * 0.55);
+	ROUGHNESS = 0.74;
+	METALLIC = 0.0;
+	float edge = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 4.0);
+	EMISSION = bioluminescence * (edge * 0.27 + pulse * 0.60);
 }
 """
 	_slime_material.shader = surface
@@ -95,14 +95,14 @@ void fragment() {
 		_body.add_child(lobe)
 		_shells.append(lobe)
 		_shell_scales.append(sizes[i])
-	var armor := _material(Color(0.10, 0.17, 0.21), false)
-	var vein := _material(Color(0.09, 0.79, 0.65), true)
-	for i in range(11):
+	var armor := _material(Color(0.063, 0.042, 0.11), false)
+	var vein := _material(Color(0.13, 0.76, 0.55), true)
+	for i in range(9):
 		var t := float(i) * 2.399
 		var r := 0.50 + float(i % 3) * 0.15
 		var spot := MeshInstance3D.new()
 		var bead := SphereMesh.new()
-		bead.radius = 0.10 + float(i % 3) * 0.028
+		bead.radius = 0.07 + float(i % 3) * 0.024
 		bead.height = bead.radius * 2.0
 		spot.mesh = bead
 		spot.material_override = vein if i % 3 == 0 else armor
@@ -110,16 +110,25 @@ void fragment() {
 		_body.add_child(spot)
 	for i in range(ROOTS.size()):
 		var thick := 0.22 + float(i % 4) * 0.032
-		var lower := _segment(thick, thick * 0.67, armor)
-		var upper := _segment(thick * 0.68, 0.016, _material(Color(0.09, 0.16 + float(i % 3) * 0.03, 0.20), false))
+		var lower := _segment(thick, thick * 0.72, _slime_material)
+		var upper := _segment(thick * 0.72, 0.014, _slime_material)
+		var knee := MeshInstance3D.new()
+		var knee_mesh := SphereMesh.new()
+		knee_mesh.radius = thick * 0.72
+		knee_mesh.height = thick * 1.44
+		knee_mesh.radial_segments = 9
+		knee_mesh.rings = 6
+		knee.mesh = knee_mesh
+		knee.material_override = _slime_material
+		get_tree().current_scene.add_child(knee)
 		var tip := MeshInstance3D.new()
 		var tip_mesh := SphereMesh.new()
-		tip_mesh.radius = 0.08
-		tip_mesh.height = 0.16
+		tip_mesh.radius = 0.046
+		tip_mesh.height = 0.092
 		tip.mesh = tip_mesh
-		tip.material_override = vein
+		tip.material_override = vein if i % 3 == 0 else _slime_material
 		get_tree().current_scene.add_child(tip)
-		_legs.append({"root": lower, "tip_section": upper, "bead": tip,
+		_legs.append({"root": lower, "tip_section": upper, "bead": tip, "knee": knee,
 			"anchor": global_position + ROOTS[i] * 2.2, "swing": 1.0,
 			"planted": false, "phase": float(i) / float(ROOTS.size())})
 	for i in range(3):
@@ -129,11 +138,11 @@ void fragment() {
 func _material(color: Color, glowing: bool) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
-	m.roughness = 0.32 if glowing else 0.56
+	m.roughness = 0.43 if glowing else 0.76
 	if glowing:
 		m.emission_enabled = true
 		m.emission = color
-		m.emission_energy_multiplier = 1.4
+		m.emission_energy_multiplier = 0.95
 	return m
 
 func _segment(base_radius: float, end_radius: float, material: Material) -> MeshInstance3D:
@@ -229,9 +238,11 @@ func _animate(delta: float) -> void:
 		var foot: Vector3 = root.lerp(full_anchor, float(limb["swing"]))
 		foot.y = maxf(0.10, foot.y)
 		var elbow := root.lerp(foot, 0.51)
-		elbow.y += 0.30 + 0.10 * sin(phase * TAU)
+		elbow.y += 0.15 + 0.10 * sin(phase * TAU)
 		_draw_segment(limb["root"], root, elbow)
 		_draw_segment(limb["tip_section"], elbow, foot)
+		var knee_node: MeshInstance3D = limb["knee"]
+		knee_node.global_position = elbow
 		var bead: MeshInstance3D = limb["bead"]
 		bead.global_position = foot
 		bead.visible = true
@@ -263,7 +274,7 @@ func _draw_segment(node: MeshInstance3D, a: Vector3, b: Vector3) -> void:
 
 func _exit_tree() -> void:
 	for leg in _legs:
-		for key in ["root", "tip_section", "bead"]:
+		for key in ["root", "tip_section", "bead", "knee"]:
 			var item: MeshInstance3D = leg[key]
 			if is_instance_valid(item):
 				item.queue_free()
